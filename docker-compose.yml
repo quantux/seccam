@@ -1,0 +1,15 @@
+services:
+  security_camera:
+    build: .
+    container_name: security_camera
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./videos:/videos
+      - ./configs:/configs
+    environment:
+      - TZ=America/Sao_Paulo
+      - SEGMENT_TIME=60
+      - DAYS_TO_KEEP=3
+

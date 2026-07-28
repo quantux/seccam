@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Cameras</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- CSS -->
+  <link rel="stylesheet" href="./css/style.css?v=export-layout-fix-1">
+
+  <!-- hls.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M23 7l-7 5 7 5V7z" />
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+      </div>
+      <span>Security Cameras</span>
+    </div>
+
+    <div id="cameraStatusBadge" class="badge badge-live">
+      <span class="badge-dot"></span>
+      <span id="cameraStatusText">Live</span>
+    </div>
+  </header>
+
+  <!-- Main Grid -->
+  <main>
+    <!-- Video Player Section -->
+    <section class="player-section">
+      <div class="video-card">
+        <div class="video-wrapper">
+          <video id="videoPlayer" controls autoplay playsinline></video>
+
+          <div id="playerPlaceholder" class="player-placeholder">
+            <div class="spinner" id="loadingSpinner" style="display: none;"></div>
+            <p id="placeholderText">Selecione uma câmera e uma data para assistir</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sidebar Controls -->
+    <aside class="controls-sidebar">
+      <div class="panel-card">
+        <h2 class="panel-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          Seleção de Vídeo
+        </h2>
+
+        <div class="form-group">
+          <label for="cameraSelect">Câmera</label>
+          <select id="cameraSelect">
+            <option value="">Carregando câmeras...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="dateSelect">Data de Gravação</label>
+          <input type="date" id="dateSelect" disabled>
+        </div>
+
+        <p id="statusMessage" class="status-msg"></p>
+      </div>
+
+      <!-- Exportar Trecho (Download MP4) -->
+      <div class="panel-card export-panel">
+        <h2 class="panel-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Baixar Trecho
+        </h2>
+
+        <form id="exportForm">
+          <div class="time-range-row">
+            <div class="form-group">
+              <label for="exportStart">Início</label>
+              <div class="time-input-wrapper">
+                <input type="time" id="exportStart" step="1" required class="time-input">
+                <button type="button" id="setStartBtn" class="time-now-btn" title="Usar tempo atual do player">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="exportEnd">Fim</label>
+              <div class="time-input-wrapper">
+                <input type="time" id="exportEnd" step="1" required class="time-input">
+                <button type="button" id="setEndBtn" class="time-now-btn" title="Usar tempo atual do player">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p class="export-hint">💡 Use o ícone <strong>⏱</strong> para capturar o tempo atual do vídeo.</p>
+
+          <button type="submit" id="exportBtn" class="btn btn-download" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span id="exportBtnLabel">Baixar MP4</span>
+          </button>
+
+          <div id="exportProgress" class="export-progress hidden">
+            <div class="export-progress-bar">
+              <div class="export-progress-fill"></div>
+            </div>
+            <span class="export-progress-label">Processando vídeo...</span>
+          </div>
+        </form>
+        <p id="exportMsg" class="status-msg"></p>
+      </div>
+
+    </aside>
+  </main>
+
+  <script src="./js/app.js?v=remove-camera-form-1"></script>
+</body>
+</html>
