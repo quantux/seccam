@@ -75,9 +75,9 @@ def initialize_upload(youtube, file_path, title):
     insert_request = youtube.videos().insert(
         part="snippet,status",
         body=body,
-        media_body=MediaFileUpload(
-            file_path, chunksize=-1, resumable=True, mimetype="video/mp2t"
-        )
+            media_body=MediaFileUpload(
+                file_path, chunksize=-1, resumable=True, mimetype="video/x-matroska"
+            )
     )
     resumable_upload(insert_request, title)
 

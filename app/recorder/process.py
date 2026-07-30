@@ -69,7 +69,7 @@ def concatenate_videos(file_list, camera_name, start_time):
         return None
 
     title_time_str = start_time.strftime("%Y-%m-%d_%H-%M-%S")
-    output_file = os.path.join("/tmp", f"{camera_name}_{title_time_str}.ts")
+    output_file = os.path.join("/tmp", f"{camera_name}_{title_time_str}.mkv")
     list_file = os.path.join("/tmp", f"concat_list_{camera_name}.txt")
 
     log(f"Concatenando {len(valid_files)} arquivos válidos em {output_file}...")
@@ -146,7 +146,7 @@ def upload_last_hours(now=None):
 
         output_file = concatenate_videos(selected_files, camera_folder, interval_start)
         if output_file:
-            title = os.path.basename(output_file).replace(".ts", "")
+            title = os.path.basename(output_file).replace(".mkv", "")
             initialize_upload(youtube, output_file, title)
             os.remove(output_file)
             log(f"🗑️ Arquivo temporário removido: {output_file}")
