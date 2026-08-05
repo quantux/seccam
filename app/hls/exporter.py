@@ -5,7 +5,7 @@ import subprocess
 import datetime
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from config import VIDEOS_FOLDER
+from config import VIDEOS_FOLDER, SEGMENT_TIME
 
 def export_video_clip(camera_name: str, date_str: str, start_time_str: str, end_time_str: str):
     """
@@ -37,7 +37,7 @@ def export_video_clip(camera_name: str, date_str: str, start_time_str: str, end_
         try:
             file_dt = datetime.datetime.strptime(base, "%Y-%m-%d_%H-%M-%S")
             # Inclui arquivos que começam ou cobrem o intervalo
-            if (file_dt + datetime.timedelta(seconds=60)) >= dt_start and file_dt <= dt_end:
+            if (file_dt + datetime.timedelta(seconds=SEGMENT_TIME)) >= dt_start and file_dt <= dt_end:
                 selected_files.append(f)
         except ValueError:
             continue

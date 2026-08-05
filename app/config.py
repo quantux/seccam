@@ -1,7 +1,7 @@
 import os
 
-CONFIG_FOLDER = "/configs"
-VIDEOS_FOLDER = "/videos"
+CONFIG_FOLDER = os.getenv("CONFIG_FOLDER", "/configs")
+VIDEOS_FOLDER = os.getenv("VIDEOS_FOLDER", "/videos")
 CAMERAS_JSON = os.path.join(CONFIG_FOLDER, "cameras.json")
 
 SEGMENT_TIME = int(os.getenv("SEGMENT_TIME", 60))  # segundos por arquivo (1 minuto)

@@ -225,6 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistUrl = `/api/playlist.m3u8?camera=${encodeURIComponent(camera)}&date=${encodeURIComponent(date)}`;
 
     showPlaceholder(true, 'Carregando vídeo do dia...', true);
+    playlistStartTime = null;
 
     // Destrói instância HLS prévia se existir
     if (currentHls) {
@@ -237,26 +238,35 @@ document.addEventListener('DOMContentLoaded', () => {
         debug: false,
         enableWorker: true,
         lowLatencyMode: false,
-        // Manter dez minutos de vídeo 1080p no MediaSource pode esgotar a
-        // memória ao buscar um ponto distante. Com um buffer curto, hls.js
-        // descarta o trecho antigo e carrega imediatamente o novo fragmento.
-        backBufferLength: 30,
-        maxBufferLength: 30,
+
+        // Configurações de buffer otimizadas para gravações de 10h+
+        backBufferLength: 120,          // Mantém 2 min de histórico para retroceder rápido
+        maxBufferLength: 120,           // Buffer de até 2 min à frente
+        maxMaxBufferLength: 600,        // Teto máximo de buffer (10 minutos)
+        maxBufferSize: 60 * 1024 * 1024, // Limite de 60 MB de memória
+
+        // Ajustes para busca (seek) fluida e recuperação automática de buracos de tempo
+        maxBufferHole: 0.8,             // Salta pequenas lacunas de timestamps (até 0.8s) ao buscar
+        highBufferWatchdogPeriod: 2,    // Monitora estagnação do player a cada 2s
+        nudgeMaxRetry: 10,              // Tenta empurrar o cursor além de buracos até 10 vezes
+        nudgeOffset: 0.2,               // Passo do empurrão (0.2s) se ficar preso em lacuna
+
+        // Tolerância de rede
+        fragLoadingTimeOut: 30000,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 1000,
+        manifestLoadingTimeOut: 30000,
+        manifestLoadingMaxRetry: 6,
       });
 
       currentHls = hls;
       hls.loadSource(playlistUrl);
       hls.attachMedia(videoPlayer);
 
-      hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-        showPlaceholder(false);
-        showStatus('Vídeo pronto para reprodução.');
-
-        // Extrai o horário do primeiro segmento para o recurso de captura de tempo atual
+      const extractStartTime = (details) => {
         try {
-          const firstFrag = hls.levels?.[0]?.details?.fragments?.[0];
+          const firstFrag = details?.fragments?.[0];
           if (firstFrag) {
-            // URLs dos segmentos: /api/segment?camera=...&file=2024-01-15_14-00-00.ts
             const urlParams = new URLSearchParams(new URL(firstFrag.url, location.href).search);
             const file = urlParams.get('file') || '';
             const match = file.match(/(\d{2})-(\d{2})-(\d{2})\.ts$/);
@@ -265,22 +275,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         } catch (_) {}
+      };
 
+      hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
+        extractStartTime(data.details);
+      });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+        showPlaceholder(false);
+        showStatus('Vídeo pronto para reprodução.');
         videoPlayer.play().catch(e => console.log('Autoplay prevenido:', e));
       });
 
+      let mediaErrorCount = 0;
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
           console.error('Erro HLS Fatal:', data);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              showPlaceholder(true, 'Sem gravações finalizadas para esta data.', false);
-              showStatus('Erro de rede ao carregar playlist.');
+              showStatus('Erro de rede ao carregar playlist. Tentando reconectar...');
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              showStatus('Erro ao decodificar segmento de mídia. Tentando recuperar...');
-              hls.recoverMediaError();
+              mediaErrorCount++;
+              if (mediaErrorCount <= 3) {
+                showStatus('Recuperando erro de decodificação de mídia...');
+                hls.recoverMediaError();
+              } else {
+                showStatus('Recarregando codecs para estabilizar mídia...');
+                hls.swapAudioCodec();
+                hls.recoverMediaError();
+                mediaErrorCount = 0;
+              }
               break;
             default:
               showPlaceholder(true, 'Não foi possível carregar o vídeo.', false);
@@ -289,6 +315,28 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       });
+
+      // Monitora estagnações ao avançar/retroceder na barra de progresso
+      let stallTimeout = null;
+      const clearStallWatchdog = () => {
+        if (stallTimeout) {
+          clearTimeout(stallTimeout);
+          stallTimeout = null;
+        }
+      };
+
+      videoPlayer.addEventListener('waiting', () => {
+        clearStallWatchdog();
+        stallTimeout = setTimeout(() => {
+          if (!videoPlayer.paused && videoPlayer.readyState < 3 && currentHls) {
+            console.warn('Player travado após seek. Ajustando posição para destravar...');
+            videoPlayer.currentTime += 0.2;
+          }
+        }, 2500);
+      });
+
+      videoPlayer.addEventListener('playing', clearStallWatchdog);
+      videoPlayer.addEventListener('seeked', clearStallWatchdog);
 
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
       // Suporte nativo ao HLS (Safari iOS/macOS)

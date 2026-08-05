@@ -28,7 +28,7 @@ def start_recording(camera_name, rtsp_url):
             "-f", "segment",
             "-segment_time", str(SEGMENT_TIME),
             "-strftime", "1",
-            "-reset_timestamps", "1",
+            "-reset_timestamps", "0",
             "-segment_format", "mpegts",
             output_pattern
         ]

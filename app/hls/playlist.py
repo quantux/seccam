@@ -1,11 +1,10 @@
 import os
 import datetime
 import re
-import statistics
 from config import VIDEOS_FOLDER, SEGMENT_TIME
 
-
-MIN_COMPLETE_SEGMENT_RATIO = 0.80
+# Tamanho mínimo seguro em bytes para descartar apenas arquivos vazios / corrompidos (< 1KB)
+MIN_SEGMENT_SIZE_BYTES = 1024
 
 def get_available_dates(camera_name: str):
     """
@@ -47,38 +46,27 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
             try:
                 # Converte o timestamp para objeto datetime
                 dt = datetime.datetime.strptime(base_name, "%Y-%m-%d_%H-%M-%S")
-                segments.append({"filename": filename, "datetime": dt})
-            except ValueError:
+                file_path = os.path.join(camera_dir, filename)
+                size = os.path.getsize(file_path)
+                # Descarta apenas arquivos realmente vazios ou corrompidos
+                if size >= MIN_SEGMENT_SIZE_BYTES:
+                    segments.append({"filename": filename, "datetime": dt, "size": size})
+            except (ValueError, OSError):
                 continue
 
     if not segments:
         return None
 
-    # Ordena segmentos cronologicamente. O segmentador escreve diretamente no
-    # arquivo final; portanto, o último arquivo do dia corrente pode ainda
-    # estar aberto pelo FFmpeg e não deve ser anunciado ao player.
+    # Ordena segmentos cronologicamente.
     segments.sort(key=lambda x: x["datetime"])
 
     now = datetime.datetime.now()
-    if date_str == now.strftime("%Y-%m-%d") and segments:
+    if date_str == now.strftime("%Y-%m-%d") and len(segments) > 1:
+        # Se for o dia de hoje e houver mais de 1 segmento, desconsidera o último
+        # arquivo pois o FFmpeg ainda pode estar gravando nele.
         segments.pop()
 
     if not segments:
-        return None
-
-    # Após uma queda de RTSP/FFmpeg podem ficar arquivos truncados no diretório.
-    # Como cada câmera mantém bitrate aproximadamente estável, o tamanho mediano
-    # dos segmentos do próprio dia permite identificá-los sem executar ffprobe
-    # para cada item a cada carregamento da playlist.
-    sizes = [os.path.getsize(os.path.join(camera_dir, seg["filename"])) for seg in segments]
-    typical_size = statistics.median(sizes)
-    minimum_complete_size = typical_size * MIN_COMPLETE_SEGMENT_RATIO
-    complete_segments = [
-        seg for seg, size in zip(segments, sizes)
-        if size >= minimum_complete_size
-    ]
-
-    if not complete_segments:
         return None
 
     # Constrói o texto M3U8 HLS VOD
@@ -92,17 +80,28 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
         ""
     ]
 
-    previous_datetime = None
-    for seg in complete_segments:
-        # Um intervalo grande indica que a gravação foi reiniciada. Informa o
-        # player para não continuar os timestamps do arquivo anterior.
-        if previous_datetime and (seg["datetime"] - previous_datetime).total_seconds() > SEGMENT_TIME * 1.5:
-            lines.append("#EXT-X-DISCONTINUITY")
-        lines.append(f"#EXTINF:{float(SEGMENT_TIME):.3f},")
+    for i, seg in enumerate(segments):
+        # 1. Se houver lacuna de tempo em relação ao segmento anterior, insere descontinuidade
+        if i > 0:
+            gap_prev = (seg["datetime"] - segments[i-1]["datetime"]).total_seconds()
+            if gap_prev > SEGMENT_TIME * 2.5:
+                lines.append("#EXT-X-DISCONTINUITY")
+
+        # 2. Determina a duração exata do segmento baseada no horário do próximo segmento
+        if i < len(segments) - 1:
+            gap_next = (segments[i+1]["datetime"] - seg["datetime"]).total_seconds()
+            if 0 < gap_next <= SEGMENT_TIME * 2.5:
+                duration = gap_next
+            else:
+                duration = float(SEGMENT_TIME)
+        else:
+            duration = float(SEGMENT_TIME)
+
+        lines.append(f"#EXTINF:{duration:.3f},")
         lines.append(f"/api/segment?camera={camera_name}&file={seg['filename']}")
-        previous_datetime = seg["datetime"]
 
     lines.append("#EXT-X-ENDLIST")
     lines.append("")
 
     return "\n".join(lines)
+
