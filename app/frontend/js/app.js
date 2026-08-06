@@ -238,6 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         debug: false,
         enableWorker: true,
         lowLatencyMode: false,
+        progressive: true,              // Demuxa e envia segmentos ao player enquanto baixa
 
         // Configurações de buffer otimizadas para gravações de 10h+
         backBufferLength: 120,          // Mantém 2 min de histórico para retroceder rápido
@@ -247,16 +248,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Ajustes para busca (seek) fluida e recuperação automática de buracos de tempo
         maxBufferHole: 0.8,             // Salta pequenas lacunas de timestamps (até 0.8s) ao buscar
-        highBufferWatchdogPeriod: 2,    // Monitora estagnação do player a cada 2s
+        highBufferWatchdogPeriod: 3,    // Monitora estagnação do player via HLS.js
         nudgeMaxRetry: 10,              // Tenta empurrar o cursor além de buracos até 10 vezes
         nudgeOffset: 0.2,               // Passo do empurrão (0.2s) se ficar preso em lacuna
 
-        // Tolerância de rede
-        fragLoadingTimeOut: 30000,
-        fragLoadingMaxRetry: 6,
+        // Tolerância de rede otimizada para conexões remotas / Raspberry Pi 4
+        fragLoadingTimeOut: 45000,
+        fragLoadingMaxRetry: 8,
         fragLoadingRetryDelay: 1000,
-        manifestLoadingTimeOut: 30000,
-        manifestLoadingMaxRetry: 6,
+        manifestLoadingTimeOut: 45000,
+        manifestLoadingMaxRetry: 8,
       });
 
       currentHls = hls;
@@ -315,28 +316,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       });
-
-      // Monitora estagnações ao avançar/retroceder na barra de progresso
-      let stallTimeout = null;
-      const clearStallWatchdog = () => {
-        if (stallTimeout) {
-          clearTimeout(stallTimeout);
-          stallTimeout = null;
-        }
-      };
-
-      videoPlayer.addEventListener('waiting', () => {
-        clearStallWatchdog();
-        stallTimeout = setTimeout(() => {
-          if (!videoPlayer.paused && videoPlayer.readyState < 3 && currentHls) {
-            console.warn('Player travado após seek. Ajustando posição para destravar...');
-            videoPlayer.currentTime += 0.2;
-          }
-        }, 2500);
-      });
-
-      videoPlayer.addEventListener('playing', clearStallWatchdog);
-      videoPlayer.addEventListener('seeked', clearStallWatchdog);
 
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
       // Suporte nativo ao HLS (Safari iOS/macOS)

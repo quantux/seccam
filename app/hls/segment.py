@@ -24,6 +24,6 @@ def get_segment_file_response(camera_name: str, filename: str):
         headers={
             "Accept-Ranges": "bytes",
             "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "public, max-age=31536000"
+            "Cache-Control": "public, max-age=31536000, immutable"
         }
     )

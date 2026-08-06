@@ -40,19 +40,21 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
     prefix = f"{date_str}_"
     segments = []
     
-    for filename in sorted(os.listdir(camera_dir)):
-        if filename.startswith(prefix) and filename.endswith(".ts"):
-            base_name = os.path.splitext(filename)[0]
-            try:
-                # Converte o timestamp para objeto datetime
-                dt = datetime.datetime.strptime(base_name, "%Y-%m-%d_%H-%M-%S")
-                file_path = os.path.join(camera_dir, filename)
-                size = os.path.getsize(file_path)
-                # Descarta apenas arquivos realmente vazios ou corrompidos
-                if size >= MIN_SEGMENT_SIZE_BYTES:
-                    segments.append({"filename": filename, "datetime": dt, "size": size})
-            except (ValueError, OSError):
-                continue
+    try:
+        with os.scandir(camera_dir) as entries:
+            for entry in entries:
+                if entry.is_file() and entry.name.startswith(prefix) and entry.name.endswith(".ts"):
+                    filename = entry.name
+                    base_name = filename[:-3]
+                    try:
+                        dt = datetime.datetime.strptime(base_name, "%Y-%m-%d_%H-%M-%S")
+                        size = entry.stat().st_size
+                        if size >= MIN_SEGMENT_SIZE_BYTES:
+                            segments.append({"filename": filename, "datetime": dt, "size": size})
+                    except (ValueError, OSError):
+                        continue
+    except OSError:
+        return None
 
     if not segments:
         return None
