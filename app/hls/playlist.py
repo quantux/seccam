@@ -71,39 +71,64 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
     if not segments:
         return None
 
-    # Constrói o texto M3U8 HLS VOD
-    lines = [
-        "#EXTM3U",
-        "#EXT-X-VERSION:3",
-        f"#EXT-X-TARGETDURATION:{SEGMENT_TIME}",
-        "#EXT-X-MEDIA-SEQUENCE:0",
-        "#EXT-X-PLAYLIST-TYPE:VOD",
-        "#EXT-X-INDEPENDENT-SEGMENTS",
-        ""
-    ]
+    max_duration = float(SEGMENT_TIME)
+    playlist_items = []
 
     for i, seg in enumerate(segments):
-        # 1. Se houver lacuna de tempo em relação ao segmento anterior, insere descontinuidade
+        is_discontinuity = False
         if i > 0:
             gap_prev = (seg["datetime"] - segments[i-1]["datetime"]).total_seconds()
-            if gap_prev > SEGMENT_TIME * 2.5:
-                lines.append("#EXT-X-DISCONTINUITY")
+            if gap_prev > SEGMENT_TIME + 3:
+                is_discontinuity = True
 
-        # 2. Determina a duração exata do segmento baseada no horário do próximo segmento
         if i < len(segments) - 1:
             gap_next = (segments[i+1]["datetime"] - seg["datetime"]).total_seconds()
-            if 0 < gap_next <= SEGMENT_TIME * 2.5:
+            if 0 < gap_next <= SEGMENT_TIME + 3:
                 duration = gap_next
             else:
                 duration = float(SEGMENT_TIME)
         else:
             duration = float(SEGMENT_TIME)
 
-        lines.append(f"#EXTINF:{duration:.3f},")
-        lines.append(f"/api/segment?camera={camera_name}&file={seg['filename']}")
+        if duration > max_duration:
+            max_duration = duration
+
+        playlist_items.append({
+            "discontinuity": is_discontinuity,
+            "duration": duration,
+            "datetime": seg["datetime"],
+            "filename": seg["filename"]
+        })
+
+    target_duration = int(max_duration + 5)
+
+    # Conta total de descontinuidades para o header #EXT-X-DISCONTINUITY-SEQUENCE
+    num_discontinuities = sum(1 for item in playlist_items if item["discontinuity"])
+
+    # Constrói o texto M3U8 HLS VOD
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:6",  # Versão 6 é necessária para #EXT-X-DISCONTINUITY-SEQUENCE
+        f"#EXT-X-TARGETDURATION:{target_duration}",
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        f"#EXT-X-DISCONTINUITY-SEQUENCE:{num_discontinuities}",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+        "#EXT-X-INDEPENDENT-SEGMENTS",
+        ""
+    ]
+
+    for item in playlist_items:
+        if item["discontinuity"]:
+            lines.append("#EXT-X-DISCONTINUITY")
+
+        iso_time = item["datetime"].strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        lines.append(f"#EXT-X-PROGRAM-DATE-TIME:{iso_time}")
+        lines.append(f"#EXTINF:{item['duration']:.3f},")
+        lines.append(f"/api/segment?camera={camera_name}&file={item['filename']}")
 
     lines.append("#EXT-X-ENDLIST")
     lines.append("")
 
     return "\n".join(lines)
+
 

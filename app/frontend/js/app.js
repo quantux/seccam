@@ -238,26 +238,31 @@ document.addEventListener('DOMContentLoaded', () => {
         debug: false,
         enableWorker: true,
         lowLatencyMode: false,
-        progressive: true,              // Demuxa e envia segmentos ao player enquanto baixa
+        progressive: false,
 
-        // Configurações de buffer otimizadas para gravações de 10h+
-        backBufferLength: 120,          // Mantém 2 min de histórico para retroceder rápido
-        maxBufferLength: 120,           // Buffer de até 2 min à frente
-        maxMaxBufferLength: 600,        // Teto máximo de buffer (10 minutos)
-        maxBufferSize: 60 * 1024 * 1024, // Limite de 60 MB de memória
+        // Buffer reduzido para seek responsivo em rede remota:
+        // Buffer grande exige baixar muitos dados antes de retomar após seek.
+        backBufferLength: 30,           // Mantém 30s de histórico para retroceder
+        maxBufferLength: 30,            // Buffer de até 30s à frente (= 1 segmento de 60s)
+        maxMaxBufferLength: 120,        // Teto máximo (2 min)
+        maxBufferSize: 30 * 1024 * 1024, // Limite de 30 MB de memória
 
-        // Ajustes para busca (seek) fluida e recuperação automática de buracos de tempo
-        maxBufferHole: 0.8,             // Salta pequenas lacunas de timestamps (até 0.8s) ao buscar
-        highBufferWatchdogPeriod: 3,    // Monitora estagnação do player via HLS.js
-        nudgeMaxRetry: 10,              // Tenta empurrar o cursor além de buracos até 10 vezes
-        nudgeOffset: 0.2,               // Passo do empurrão (0.2s) se ficar preso em lacuna
+        // Ajustes para seek fluido e recuperação de lacunas
+        maxBufferHole: 1.5,             // Salta lacunas de até 1.5s ao buscar
+        highBufferWatchdogPeriod: 3,
+        nudgeMaxRetry: 10,
+        nudgeOffset: 0.2,
 
-        // Tolerância de rede otimizada para conexões remotas / Raspberry Pi 4
-        fragLoadingTimeOut: 45000,
-        fragLoadingMaxRetry: 8,
-        fragLoadingRetryDelay: 1000,
-        manifestLoadingTimeOut: 45000,
-        manifestLoadingMaxRetry: 8,
+        // Tolerância de rede para Raspberry Pi / conexões remotas:
+        // Timeout maior evita erros falsos em redes com latência alta.
+        fragLoadingTimeOut: 60000,      // 60s para carregar cada segmento
+        fragLoadingMaxRetry: 5,
+        fragLoadingRetryDelay: 1500,
+        manifestLoadingTimeOut: 30000,
+        manifestLoadingMaxRetry: 5,
+
+        // Seek imediato: não espera buffer cheio para continuar após seek
+        startFragPrefetch: false,
       });
 
       currentHls = hls;
