@@ -102,16 +102,12 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
 
     target_duration = int(max_duration + 5)
 
-    # Conta total de descontinuidades para o header #EXT-X-DISCONTINUITY-SEQUENCE
-    num_discontinuities = sum(1 for item in playlist_items if item["discontinuity"])
-
     # Constrói o texto M3U8 HLS VOD
     lines = [
         "#EXTM3U",
-        "#EXT-X-VERSION:6",  # Versão 6 é necessária para #EXT-X-DISCONTINUITY-SEQUENCE
+        "#EXT-X-VERSION:3",
         f"#EXT-X-TARGETDURATION:{target_duration}",
         "#EXT-X-MEDIA-SEQUENCE:0",
-        f"#EXT-X-DISCONTINUITY-SEQUENCE:{num_discontinuities}",
         "#EXT-X-PLAYLIST-TYPE:VOD",
         "#EXT-X-INDEPENDENT-SEGMENTS",
         ""
