@@ -1,7 +1,7 @@
 services:
-  security_camera:
+  seccam:
     build: .
-    container_name: security_camera
+    container_name: seccam
     restart: unless-stopped
     ports:
       - "8000:8000"

@@ -1,10 +1,50 @@
 import os
 import datetime
+import math
 import re
+import subprocess
 from config import VIDEOS_FOLDER, SEGMENT_TIME
 
 # Tamanho mínimo seguro em bytes para descartar apenas arquivos vazios / corrompidos (< 1KB)
 MIN_SEGMENT_SIZE_BYTES = 1024
+
+# Cache em memória para durações de segmentos probed: filepath -> (mtime, size, duration)
+_duration_cache = {}
+
+def get_segment_duration(file_path: str) -> float:
+    """
+    Retorna a duração real em segundos do segmento .ts usando ffprobe com cache em memória.
+    """
+    try:
+        stat = os.stat(file_path)
+        mtime = stat.st_mtime
+        size = stat.st_size
+    except OSError:
+        return float(SEGMENT_TIME)
+
+    cached = _duration_cache.get(file_path)
+    if cached and cached[0] == mtime and cached[1] == size:
+        return cached[2]
+
+    duration = float(SEGMENT_TIME)
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+        if res.returncode == 0 and res.stdout.strip():
+            parsed_dur = float(res.stdout.strip())
+            if parsed_dur > 0:
+                duration = parsed_dur
+    except Exception:
+        pass
+
+    _duration_cache[file_path] = (mtime, size, duration)
+    return duration
 
 def get_available_dates(camera_name: str):
     """
@@ -50,7 +90,14 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
                         dt = datetime.datetime.strptime(base_name, "%Y-%m-%d_%H-%M-%S")
                         size = entry.stat().st_size
                         if size >= MIN_SEGMENT_SIZE_BYTES:
-                            segments.append({"filename": filename, "datetime": dt, "size": size})
+                            file_path = os.path.join(camera_dir, filename)
+                            duration = get_segment_duration(file_path)
+                            segments.append({
+                                "filename": filename,
+                                "datetime": dt,
+                                "duration": duration,
+                                "size": size
+                            })
                     except (ValueError, OSError):
                         continue
     except OSError:
@@ -77,30 +124,23 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
     for i, seg in enumerate(segments):
         is_discontinuity = False
         if i > 0:
-            gap_prev = (seg["datetime"] - segments[i-1]["datetime"]).total_seconds()
-            if gap_prev > SEGMENT_TIME + 3:
+            prev_seg = segments[i - 1]
+            expected_start = prev_seg["datetime"] + datetime.timedelta(seconds=prev_seg["duration"])
+            gap = (seg["datetime"] - expected_start).total_seconds()
+            if abs(gap) > 3.0:
                 is_discontinuity = True
 
-        if i < len(segments) - 1:
-            gap_next = (segments[i+1]["datetime"] - seg["datetime"]).total_seconds()
-            if 0 < gap_next <= SEGMENT_TIME + 3:
-                duration = gap_next
-            else:
-                duration = float(SEGMENT_TIME)
-        else:
-            duration = float(SEGMENT_TIME)
-
-        if duration > max_duration:
-            max_duration = duration
+        if seg["duration"] > max_duration:
+            max_duration = seg["duration"]
 
         playlist_items.append({
             "discontinuity": is_discontinuity,
-            "duration": duration,
+            "duration": seg["duration"],
             "datetime": seg["datetime"],
             "filename": seg["filename"]
         })
 
-    target_duration = int(max_duration + 5)
+    target_duration = int(math.ceil(max_duration)) + 2
 
     # Constrói o texto M3U8 HLS VOD
     lines = [
@@ -126,5 +166,6 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
     lines.append("")
 
     return "\n".join(lines)
+
 
 

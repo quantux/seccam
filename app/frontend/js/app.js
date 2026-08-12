@@ -21,47 +21,55 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentPlaylistUrl = null;
   let playlistStartTime = null; // "HH:MM:SS" do primeiro segmento do dia
 
-  // Flag para evitar loop: quando recriamos o HLS internamente, não queremos
-  // que o evento 'seeking' do video dispare outro reload.
-  let isSeeking = false;
-
-  // Configuração base do HLS.js — compartilhada entre loadPlaylist e reloadAtPosition
-  function buildHlsConfig(startPosition = -1) {
+  // Configuração recomendada do HLS.js para VOD com segmentos gravados em bloco
+  function buildHlsConfig() {
     return {
       debug: false,
       enableWorker: true,
       lowLatencyMode: false,
       progressive: false,
 
-      // startPosition: -1 = início; ≥ 0 = posição em segundos
-      startPosition,
+      // Gerenciamento de buffer
+      backBufferLength: 60,
+      maxBufferLength: 60,
+      maxMaxBufferLength: 300,
+      maxBufferSize: 60 * 1024 * 1024,
 
-      // Buffer menor para seek mais rápido em rede remota
-      backBufferLength: 30,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 120,
-      maxBufferSize: 30 * 1024 * 1024,
+      // Tolerância a descontinuidades e lacunas de timestamp nos arquivos .ts
+      maxBufferHole: 0.5,
+      highBufferWatchdogPeriod: 3,
+      nudgeMaxRetry: 5,
+      nudgeOffset: 0.2,
 
-      // Tolerância a lacunas de timestamp nos segmentos
-      maxBufferHole: 2.0,
-      highBufferWatchdogPeriod: 4,
-      nudgeMaxRetry: 10,
-      nudgeOffset: 0.3,
-
-      // Timeouts generosos para rede remota (Raspberry Pi)
-      fragLoadingTimeOut: 60000,
-      fragLoadingMaxRetry: 5,
-      fragLoadingRetryDelay: 1500,
-      manifestLoadingTimeOut: 30000,
-      manifestLoadingMaxRetry: 5,
-      levelLoadingTimeOut: 30000,
-      levelLoadingMaxRetry: 5,
+      // Timeouts e retentativas para evitar travamento em carregamentos mais lentos
+      fragLoadingTimeOut: 30000,
+      fragLoadingMaxRetry: 4,
+      fragLoadingRetryDelay: 1000,
+      manifestLoadingTimeOut: 20000,
+      manifestLoadingMaxRetry: 3,
+      levelLoadingTimeOut: 20000,
+      levelLoadingMaxRetry: 3,
     };
   }
 
   // ─── Estado inicial ────────────────────────────────────────────────────────
   showPlaceholder(true, 'Selecione uma câmera e uma data para assistir', false);
   fetchCameras();
+
+  // Eventos de estado do HTML5 Video Element
+  videoPlayer.addEventListener('playing', () => {
+    showPlaceholder(false);
+  });
+
+  videoPlayer.addEventListener('waiting', () => {
+    // Não re-exibe a cortina preta de placeholder, só atualiza texto de status
+    showStatus('Carregando buffer...');
+  });
+
+  videoPlayer.addEventListener('error', (e) => {
+    console.error('Erro no elemento de vídeo:', videoPlayer.error);
+    showStatus('Erro ao carregar mídia.');
+  });
 
   // ─── 1. Câmeras ────────────────────────────────────────────────────────────
   async function fetchCameras() {
@@ -133,55 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ─── 4. Seek confiável: intercepta o evento do browser e recria o HLS ─────
-  // O HLS.js tem comportamento instável ao fazer seek em VOD longo com muitas
-  // descontinuidades: o vídeo pula para posições erradas ou trava infinitamente.
-  // A solução é destruir o HLS.js e recriar com startPosition = tempo desejado.
-  let seekDebounce = null;
-
-  videoPlayer.addEventListener('seeking', () => {
-    // Ignora eventos de seeking disparados pelo próprio reload interno
-    if (isSeeking || !currentPlaylistUrl) return;
-
-    clearTimeout(seekDebounce);
-    const targetTime = videoPlayer.currentTime;
-
-    // Pequeno debounce para não disparar em cada pixel do scrubbing
-    seekDebounce = setTimeout(() => {
-      performSeek(targetTime);
-    }, 400);
-  });
-
-  function performSeek(targetSeconds) {
-    if (!currentPlaylistUrl || isSeeking) return;
-
-    console.log(`[seek] Recarregando em ${targetSeconds.toFixed(1)}s`);
-    isSeeking = true;
-
-    const wasPlaying = !videoPlayer.paused;
-
-    destroyHls();
-
-    const hls = createHlsInstance(targetSeconds);
-
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      isSeeking = false;
-      showStatus(`Buscando ${formatSeconds(targetSeconds)}...`);
-      if (wasPlaying) {
-        videoPlayer.play().catch(() => {});
-      }
-    });
-
-    hls.on(Hls.Events.FRAG_CHANGED, (event, data) => {
-      // Assim que o primeiro fragmento carregou, atualiza status
-      const t = videoPlayer.currentTime;
-      showStatus(`Reproduzindo a partir de ${formatSeconds(t)}`);
-    });
-
-    setupHlsErrorHandling(hls);
-  }
-
-  // ─── 5. Carrega playlist do zero (câmera/data nova) ───────────────────────
+  // ─── 4. Carrega a playlist HLS para a câmera e data selecionadas ───────────
   function loadPlaylist() {
     const camera = cameraSelect.value;
     const date = dateSelect.value;
@@ -189,48 +149,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     currentPlaylistUrl = `/api/playlist.m3u8?camera=${encodeURIComponent(camera)}&date=${encodeURIComponent(date)}`;
     playlistStartTime = null;
-    isSeeking = false;
 
     showPlaceholder(true, 'Carregando vídeo...', true);
     destroyHls();
 
-    const hls = createHlsInstance(-1); // -1 = começa do início
+    if (Hls.isSupported()) {
+      const hls = new Hls(buildHlsConfig());
+      currentHls = hls;
+      hls.loadSource(currentPlaylistUrl);
+      hls.attachMedia(videoPlayer);
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      showPlaceholder(false);
-      showStatus('Vídeo pronto para reprodução.');
-      videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
-    });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        showPlaceholder(false);
+        showStatus('Vídeo pronto para reprodução.');
+        videoPlayer.play().catch(e => console.log('Autoplay não iniciado automaticamente:', e));
+      });
 
-    hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
-      // Extrai o horário do primeiro segmento para cálculo de export
-      try {
-        const firstFrag = data.details?.fragments?.[0];
-        if (firstFrag) {
-          const params = new URLSearchParams(new URL(firstFrag.url, location.href).search);
-          const file = params.get('file') || '';
-          const m = file.match(/(\d{2})-(\d{2})-(\d{2})\.ts$/);
-          if (m) playlistStartTime = `${m[1]}:${m[2]}:${m[3]}`;
-        }
-      } catch (_) {}
-    });
+      hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
+        try {
+          const firstFrag = data.details?.fragments?.[0];
+          if (firstFrag) {
+            const params = new URLSearchParams(new URL(firstFrag.url, location.href).search);
+            const file = params.get('file') || '';
+            const m = file.match(/(\d{2})-(\d{2})-(\d{2})\.ts$/);
+            if (m) playlistStartTime = `${m[1]}:${m[2]}:${m[3]}`;
+          }
+        } catch (_) {}
+      });
 
-    setupHlsErrorHandling(hls);
-  }
-
-  // ─── Helpers de HLS ────────────────────────────────────────────────────────
-  function createHlsInstance(startPosition) {
-    if (!Hls.isSupported()) {
-      // Fallback nativo (Safari)
+      setupHlsErrorHandling(hls);
+    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+      // Fallback nativo (Safari em iOS/macOS)
       videoPlayer.src = currentPlaylistUrl;
-      return { on: () => {}, destroy: () => {} };
+      videoPlayer.addEventListener('loadedmetadata', () => {
+        showPlaceholder(false);
+        showStatus('Vídeo pronto para reprodução.');
+        videoPlayer.play().catch(e => console.log('Autoplay não iniciado automaticamente:', e));
+      });
+    } else {
+      showPlaceholder(true, 'Seu navegador não suporta reprodução HLS.', false);
     }
-
-    const hls = new Hls(buildHlsConfig(startPosition));
-    currentHls = hls;
-    hls.loadSource(currentPlaylistUrl);
-    hls.attachMedia(videoPlayer);
-    return hls;
   }
 
   function destroyHls() {
@@ -249,30 +207,31 @@ document.addEventListener('DOMContentLoaded', () => {
       switch (data.type) {
         case Hls.ErrorTypes.NETWORK_ERROR:
           showStatus('Erro de rede — tentando reconectar...');
-          setTimeout(() => hls.startLoad(), 2000);
+          setTimeout(() => {
+            if (currentHls) currentHls.startLoad();
+          }, 2000);
           break;
         case Hls.ErrorTypes.MEDIA_ERROR:
           mediaErrorCount++;
           if (mediaErrorCount <= 3) {
-            showStatus('Recuperando erro de decodificação...');
+            showStatus('Recuperando erro de mídia...');
             hls.recoverMediaError();
           } else {
-            showStatus('Reiniciando player...');
+            showStatus('Reiniciando decodificação de áudio/vídeo...');
             hls.swapAudioCodec();
             hls.recoverMediaError();
             mediaErrorCount = 0;
           }
           break;
         default:
-          isSeeking = false;
           showPlaceholder(true, 'Não foi possível carregar o vídeo. Tente novamente.', false);
-          hls.destroy();
+          destroyHls();
           break;
       }
     });
   }
 
-  // ─── 6. Export / Captura de tempo ─────────────────────────────────────────
+  // ─── 5. Export / Captura de tempo ─────────────────────────────────────────
   function videoTimeToHHMMSS() {
     if (!playlistStartTime || isNaN(videoPlayer.currentTime)) return null;
     const [h, m, s] = playlistStartTime.split(':').map(Number);
@@ -382,3 +341,4 @@ document.addEventListener('DOMContentLoaded', () => {
     statusMessage.textContent = msg;
   }
 });
+
