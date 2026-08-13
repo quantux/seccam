@@ -14,10 +14,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- CSS -->
-  <link rel="stylesheet" href="./css/style.css?v=export-layout-fix-1">
+  <link rel="stylesheet" href="./css/style.css?v=seek-reload-v1">
 
-  <!-- hls.js -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+  <!-- Video.js CSS -->
+  <link href="https://vjs.zencdn.net/8.16.1/video-js.css" rel="stylesheet" />
+
+  <!-- Video.js JS -->
+  <script src="https://vjs.zencdn.net/8.16.1/video.min.js"></script>
 </head>
 <body>
 
@@ -34,7 +37,17 @@
     <section class="player-section">
       <div class="video-card">
         <div class="video-wrapper">
-          <video id="videoPlayer" controls autoplay playsinline></video>
+          <video
+            id="videoPlayer"
+            class="video-js vjs-big-play-centered vjs-fluid"
+            controls
+            preload="auto"
+            playsinline
+          >
+            <p class="vjs-no-js">
+              Para assistir a este vídeo, por favor habilite o JavaScript no seu navegador.
+            </p>
+          </video>
 
           <div id="playerPlaceholder" class="player-placeholder">
             <div class="spinner" id="loadingSpinner" style="display: none;"></div>
@@ -135,6 +148,6 @@
     </aside>
   </main>
 
-  <script src="./js/app.js?v=remove-camera-form-1"></script>
+  <script src="./js/app.js?v=seek-reload-v1"></script>
 </body>
 </html>

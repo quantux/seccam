@@ -55,15 +55,18 @@ def get_available_dates(camera_name: str):
         return []
 
     dates = set()
-    for filename in os.listdir(camera_dir):
-        if filename.endswith(".ts"):
-            # Exemplo: 2026-07-28_14-30-00.ts -> 2026-07-28
-            parts = filename.split("_")
-            if len(parts) >= 2:
-                date_part = parts[0]
-                # Valida formato YYYY-MM-DD
-                if re.match(r"^\d{4}-\d{2}-\d{2}$", date_part):
-                    dates.add(date_part)
+    try:
+        with os.scandir(camera_dir) as entries:
+            for entry in entries:
+                if entry.is_file() and entry.name.lower().endswith(".ts"):
+                    filename = entry.name
+                    parts = filename.split("_")
+                    if len(parts) >= 2:
+                        date_part = parts[0]
+                        if re.match(r"^\d{4}-\d{2}-\d{2}$", date_part):
+                            dates.add(date_part)
+    except OSError:
+        return []
 
     return sorted(list(dates), reverse=True)
 
@@ -78,7 +81,7 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
 
     # Lista arquivos .ts pertencentes ao dia selecionado
     prefix = f"{date_str}_"
-    segments = []
+    raw_segments = []
     
     try:
         with os.scandir(camera_dir) as entries:
@@ -90,33 +93,53 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
                         dt = datetime.datetime.strptime(base_name, "%Y-%m-%d_%H-%M-%S")
                         size = entry.stat().st_size
                         if size >= MIN_SEGMENT_SIZE_BYTES:
-                            file_path = os.path.join(camera_dir, filename)
-                            duration = get_segment_duration(file_path)
-                            segments.append({
+                            raw_segments.append({
                                 "filename": filename,
                                 "datetime": dt,
-                                "duration": duration,
-                                "size": size
+                                "size": size,
+                                "path": os.path.join(camera_dir, filename)
                             })
                     except (ValueError, OSError):
                         continue
     except OSError:
         return None
 
-    if not segments:
+    if not raw_segments:
         return None
 
     # Ordena segmentos cronologicamente.
-    segments.sort(key=lambda x: x["datetime"])
+    raw_segments.sort(key=lambda x: x["datetime"])
 
     now = datetime.datetime.now()
-    if date_str == now.strftime("%Y-%m-%d") and len(segments) > 1:
+    if date_str == now.strftime("%Y-%m-%d") and len(raw_segments) > 1:
         # Se for o dia de hoje e houver mais de 1 segmento, desconsidera o último
         # arquivo pois o FFmpeg ainda pode estar gravando nele.
-        segments.pop()
+        raw_segments.pop()
 
-    if not segments:
+    if not raw_segments:
         return None
+
+    # Calcula duração de cada segmento (otimizado: usa intervalo cronológico para segmentos contínuos,
+    # invocando ffprobe apenas em intervalos irregulares ou no último segmento do dia).
+    segments = []
+    total_count = len(raw_segments)
+    for i, seg in enumerate(raw_segments):
+        duration = None
+        if i < total_count - 1:
+            next_dt = raw_segments[i + 1]["datetime"]
+            gap = (next_dt - seg["datetime"]).total_seconds()
+            if 50.0 <= gap <= 70.0:
+                duration = gap
+
+        if duration is None:
+            duration = get_segment_duration(seg["path"])
+
+        segments.append({
+            "filename": seg["filename"],
+            "datetime": seg["datetime"],
+            "duration": duration,
+            "size": seg["size"]
+        })
 
     max_duration = float(SEGMENT_TIME)
     playlist_items = []
@@ -157,8 +180,6 @@ def generate_m3u8_playlist(camera_name: str, date_str: str):
         if item["discontinuity"]:
             lines.append("#EXT-X-DISCONTINUITY")
 
-        iso_time = item["datetime"].strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        lines.append(f"#EXT-X-PROGRAM-DATE-TIME:{iso_time}")
         lines.append(f"#EXTINF:{item['duration']:.3f},")
         lines.append(f"/api/segment?camera={camera_name}&file={item['filename']}")
 

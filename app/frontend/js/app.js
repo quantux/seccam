@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   const cameraSelect = document.getElementById('cameraSelect');
   const dateSelect = document.getElementById('dateSelect');
-  const videoPlayer = document.getElementById('videoPlayer');
   const playerPlaceholder = document.getElementById('playerPlaceholder');
   const placeholderText = document.getElementById('placeholderText');
   const loadingSpinner = document.getElementById('loadingSpinner');
@@ -17,59 +16,121 @@ document.addEventListener('DOMContentLoaded', () => {
   const setStartBtn = document.getElementById('setStartBtn');
   const setEndBtn = document.getElementById('setEndBtn');
 
-  let currentHls = null;
   let currentPlaylistUrl = null;
   let playlistStartTime = null; // "HH:MM:SS" do primeiro segmento do dia
 
-  // Configuração recomendada do HLS.js para VOD com segmentos gravados em bloco
-  function buildHlsConfig() {
-    return {
-      debug: false,
-      enableWorker: true,
-      lowLatencyMode: false,
-      progressive: false,
+  // Flag para evitar loop: quando recriamos o player internamente no seek,
+  // não queremos que o evento 'seeking' dispare outro reload.
+  let isSeeking = false;
 
-      // Gerenciamento de buffer
-      backBufferLength: 60,
-      maxBufferLength: 60,
-      maxMaxBufferLength: 300,
-      maxBufferSize: 60 * 1024 * 1024,
+  // ─── Inicialização do Video.js Player ─────────────────────────────────────
+  const player = videojs('videoPlayer', {
+    controls: true,
+    autoplay: false,
+    preload: 'auto',
+    responsive: true,
+    fluid: true,
+    playbackRates: [0.5, 1, 1.5, 2, 4, 8],
+    html5: {
+      vhs: {
+        overrideNative: true,
+        enableLowInitialPlaylist: true,
+        smoothQualityChange: true,
+        // Buffer e tolerâncias otimizados para VOD longo com descontinuidades
+        // em rede remota (Raspberry Pi 4, ~150Mbps)
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 120,
+        maxBufferSize: 30 * 1024 * 1024,
+        maxBufferHole: 2.0,
+      },
+      nativeAudioTracks: false,
+      nativeVideoTracks: false
+    }
+  });
 
-      // Tolerância a descontinuidades e lacunas de timestamp nos arquivos .ts
-      maxBufferHole: 0.5,
-      highBufferWatchdogPeriod: 3,
-      nudgeMaxRetry: 5,
-      nudgeOffset: 0.2,
+  // Eventos de estado do Video.js
+  player.on('playing', () => {
+    showPlaceholder(false);
+    showStatus('Reproduzindo vídeo.');
+  });
 
-      // Timeouts e retentativas para evitar travamento em carregamentos mais lentos
-      fragLoadingTimeOut: 30000,
-      fragLoadingMaxRetry: 4,
-      fragLoadingRetryDelay: 1000,
-      manifestLoadingTimeOut: 20000,
-      manifestLoadingMaxRetry: 3,
-      levelLoadingTimeOut: 20000,
-      levelLoadingMaxRetry: 3,
-    };
+  player.on('waiting', () => {
+    showStatus('Carregando buffer...');
+  });
+
+  player.on('error', () => {
+    const err = player.error();
+    console.error('Erro no Video.js:', err);
+    showStatus('Erro ao carregar o vídeo.');
+  });
+
+  // ─── Seek confiável: intercepta o seek do usuário e recria o player ──────
+  // O VHS (Video.js) tem comportamento instável ao fazer seek em VOD longo com
+  // muitas descontinuidades: o vídeo pula para posições erradas ou trava
+  // infinitamente ("loading"). A solução comprovada é recarregar a playlist
+  // e pular para a posição alvo, em vez de deixar o seek interno falhar.
+  let seekDebounce = null;
+  let lastSeekReload = 0;
+  const SEEK_COOLDOWN_MS = 3000;
+
+  player.on('seeking', () => {
+    if (!currentPlaylistUrl) return;
+
+    // Ignora os eventos de 'seeking' que o próprio VHS dispara durante o
+    // buffering/gap-seeking (não são seeks do usuário). Sem este cooldown,
+    // o player recarrega em loop infinito.
+    if (isSeeking) return;
+    if (Date.now() - lastSeekReload < SEEK_COOLDOWN_MS) return;
+
+    clearTimeout(seekDebounce);
+    const targetTime = player.currentTime();
+
+    // Pequeno debounce para não disparar em cada pixel do scrubbing
+    seekDebounce = setTimeout(() => {
+      performSeek(targetTime);
+    }, 400);
+  });
+
+  function performSeek(targetSeconds) {
+    if (!currentPlaylistUrl) return;
+
+    console.log(`[seek] Recarregando em ${targetSeconds.toFixed(1)}s`);
+    isSeeking = true;
+    lastSeekReload = Date.now();
+    showStatus('Buscando posição...');
+
+    const wasPlaying = !player.paused();
+
+    reloadAtPosition(targetSeconds, () => {
+      isSeeking = false;
+      if (wasPlaying) {
+        player.play().catch(() => {});
+      }
+    });
+  }
+
+  // Recarrega a playlist e posiciona o player na posição alvo.
+  // IMPORTANTE: seta isSeeking=true antes de player.src(), porque o próprio
+  // player.src()/currentTime() dispara o evento 'seeking' — sem isso vira loop.
+  function reloadAtPosition(targetSeconds, onReady) {
+    player.one('loadedmetadata', () => {
+      player.currentTime(targetSeconds);
+      // O VHS recalcula a timeline ao carregar o fragmento alvo
+      if (onReady) onReady();
+    });
+
+    // Garante que os seeks internos desta recarga sejam ignorados
+    isSeeking = true;
+    player.src({
+      src: currentPlaylistUrl,
+      type: 'application/x-mpegURL'
+    });
   }
 
   // ─── Estado inicial ────────────────────────────────────────────────────────
   showPlaceholder(true, 'Selecione uma câmera e uma data para assistir', false);
   fetchCameras();
-
-  // Eventos de estado do HTML5 Video Element
-  videoPlayer.addEventListener('playing', () => {
-    showPlaceholder(false);
-  });
-
-  videoPlayer.addEventListener('waiting', () => {
-    // Não re-exibe a cortina preta de placeholder, só atualiza texto de status
-    showStatus('Carregando buffer...');
-  });
-
-  videoPlayer.addEventListener('error', (e) => {
-    console.error('Erro no elemento de vídeo:', videoPlayer.error);
-    showStatus('Erro ao carregar mídia.');
-  });
 
   // ─── 1. Câmeras ────────────────────────────────────────────────────────────
   async function fetchCameras() {
@@ -141,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ─── 4. Carrega a playlist HLS para a câmera e data selecionadas ───────────
+  // ─── 4. Carrega a playlist HLS no Video.js ────────────────────────────────
   function loadPlaylist() {
     const camera = cameraSelect.value;
     const date = dateSelect.value;
@@ -151,92 +212,37 @@ document.addEventListener('DOMContentLoaded', () => {
     playlistStartTime = null;
 
     showPlaceholder(true, 'Carregando vídeo...', true);
-    destroyHls();
 
-    if (Hls.isSupported()) {
-      const hls = new Hls(buildHlsConfig());
-      currentHls = hls;
-      hls.loadSource(currentPlaylistUrl);
-      hls.attachMedia(videoPlayer);
+    // Extrai o horário inicial da playlist para a ferramenta de exportação
+    fetch(currentPlaylistUrl)
+      .then(res => res.text())
+      .then(text => {
+        const match = text.match(/file=(\d{4}-\d{2}-\d{2}_)?(\d{2})-(\d{2})-(\d{2})\.ts/);
+        if (match) {
+          playlistStartTime = `${match[2]}:${match[3]}:${match[4]}`;
+        }
+      })
+      .catch(() => {});
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        showPlaceholder(false);
+    reloadAtPosition(0, () => {
+      isSeeking = false;
+      showPlaceholder(false);
+      player.play().then(() => {
         showStatus('Vídeo pronto para reprodução.');
-        videoPlayer.play().catch(e => console.log('Autoplay não iniciado automaticamente:', e));
+      }).catch(err => {
+        console.log('Autoplay não iniciado automaticamente:', err);
+        showStatus('Vídeo pronto. Clique no Play para iniciar.');
       });
-
-      hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
-        try {
-          const firstFrag = data.details?.fragments?.[0];
-          if (firstFrag) {
-            const params = new URLSearchParams(new URL(firstFrag.url, location.href).search);
-            const file = params.get('file') || '';
-            const m = file.match(/(\d{2})-(\d{2})-(\d{2})\.ts$/);
-            if (m) playlistStartTime = `${m[1]}:${m[2]}:${m[3]}`;
-          }
-        } catch (_) {}
-      });
-
-      setupHlsErrorHandling(hls);
-    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-      // Fallback nativo (Safari em iOS/macOS)
-      videoPlayer.src = currentPlaylistUrl;
-      videoPlayer.addEventListener('loadedmetadata', () => {
-        showPlaceholder(false);
-        showStatus('Vídeo pronto para reprodução.');
-        videoPlayer.play().catch(e => console.log('Autoplay não iniciado automaticamente:', e));
-      });
-    } else {
-      showPlaceholder(true, 'Seu navegador não suporta reprodução HLS.', false);
-    }
-  }
-
-  function destroyHls() {
-    if (currentHls) {
-      currentHls.destroy();
-      currentHls = null;
-    }
-  }
-
-  let mediaErrorCount = 0;
-  function setupHlsErrorHandling(hls) {
-    hls.on(Hls.Events.ERROR, (event, data) => {
-      if (!data.fatal) return;
-
-      console.error('[HLS error]', data.type, data.details);
-      switch (data.type) {
-        case Hls.ErrorTypes.NETWORK_ERROR:
-          showStatus('Erro de rede — tentando reconectar...');
-          setTimeout(() => {
-            if (currentHls) currentHls.startLoad();
-          }, 2000);
-          break;
-        case Hls.ErrorTypes.MEDIA_ERROR:
-          mediaErrorCount++;
-          if (mediaErrorCount <= 3) {
-            showStatus('Recuperando erro de mídia...');
-            hls.recoverMediaError();
-          } else {
-            showStatus('Reiniciando decodificação de áudio/vídeo...');
-            hls.swapAudioCodec();
-            hls.recoverMediaError();
-            mediaErrorCount = 0;
-          }
-          break;
-        default:
-          showPlaceholder(true, 'Não foi possível carregar o vídeo. Tente novamente.', false);
-          destroyHls();
-          break;
-      }
     });
   }
 
   // ─── 5. Export / Captura de tempo ─────────────────────────────────────────
   function videoTimeToHHMMSS() {
-    if (!playlistStartTime || isNaN(videoPlayer.currentTime)) return null;
+    const curTime = player.currentTime();
+    if (!playlistStartTime || isNaN(curTime)) return null;
     const [h, m, s] = playlistStartTime.split(':').map(Number);
     const baseSeconds = h * 3600 + m * 60 + s;
-    const total = Math.floor(baseSeconds + videoPlayer.currentTime) % (24 * 3600);
+    const total = Math.floor(baseSeconds + curTime) % (24 * 3600);
     const hh = String(Math.floor(total / 3600)).padStart(2, '0');
     const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
     const ss = String(total % 60).padStart(2, '0');
@@ -320,13 +326,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return null;
   }
 
-  function formatSeconds(s) {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = Math.floor(s % 60);
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-  }
-
   function showPlaceholder(visible, message = '', showSpinner = false) {
     if (visible) {
       playerPlaceholder.classList.remove('hidden');
@@ -336,6 +335,36 @@ document.addEventListener('DOMContentLoaded', () => {
       playerPlaceholder.classList.add('hidden');
     }
   }
+
+  // ─── Controle fino com setas do teclado ───────────────────────────────────
+  // Seta direita/esquerda: avança/retrocede 30s (aumenta o passo com Shift)
+  // Seta cima/baixo: avança/retrocede 10s (mais fino)
+  // Evita conflito com os atalhos nativos do Video.js quando o player está focado.
+  const ARROW_JUMP = 30;
+  const ARROW_FINE_JUMP = 10;
+
+  document.addEventListener('keydown', (e) => {
+    if (!currentPlaylistUrl) return;
+    // Se estiver digitando num campo de formulário, não interfere
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+
+    let delta = null;
+    switch (e.key) {
+      case 'ArrowRight': delta = e.shiftKey ? ARROW_JUMP * 6 : ARROW_JUMP; break;
+      case 'ArrowLeft':  delta = e.shiftKey ? -ARROW_JUMP * 6 : -ARROW_JUMP; break;
+      case 'ArrowUp':    delta = ARROW_FINE_JUMP; break;
+      case 'ArrowDown':  delta = -ARROW_FINE_JUMP; break;
+      default: return;
+    }
+
+    e.preventDefault();
+    const cur = player.currentTime();
+    if (isNaN(cur) || !isFinite(cur)) return;
+    const target = Math.max(0, cur + delta);
+    // Ajusta currentTime — o handler de 'seeking' cuida do recarregamento
+    player.currentTime(target);
+  });
 
   function showStatus(msg) {
     statusMessage.textContent = msg;

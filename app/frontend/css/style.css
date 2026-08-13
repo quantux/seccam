@@ -120,6 +120,50 @@ video {
   object-fit: contain;
 }
 
+/* Video.js Theme Customization */
+.video-js {
+  width: 100% !important;
+  height: 100% !important;
+  font-family: inherit;
+  border-radius: var(--radius);
+}
+
+.video-js .vjs-big-play-button {
+  background-color: rgba(59, 130, 246, 0.85) !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 64px !important;
+  height: 64px !important;
+  line-height: 64px !important;
+  margin-top: -32px !important;
+  margin-left: -32px !important;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.video-js:hover .vjs-big-play-button {
+  background-color: #2563eb !important;
+  transform: scale(1.1);
+}
+
+.video-js .vjs-control-bar {
+  background: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: blur(8px);
+}
+
+.video-js .vjs-play-progress {
+  background-color: var(--accent-color) !important;
+}
+
+.video-js .vjs-volume-level {
+  background-color: var(--accent-color) !important;
+}
+
+/* Oculta o botão de Picture-in-Picture (miniplayer) */
+.video-js .vjs-picture-in-picture-control {
+  display: none !important;
+}
+
 /* Overlay Placeholder */
 .player-placeholder {
   position: absolute;

@@ -20,7 +20,6 @@ def start_recording(camera_name, rtsp_url):
     while True:
         cmd = [
             "ffmpeg",
-            "-use_wallclock_as_timestamps", "1",
             "-fflags", "+genpts",
             "-i", rtsp_url,
             "-c:v", "copy",
@@ -28,7 +27,11 @@ def start_recording(camera_name, rtsp_url):
             "-f", "segment",
             "-segment_time", str(SEGMENT_TIME),
             "-strftime", "1",
-            "-reset_timestamps", "1",  # Cada segmento .ts começa com PTS=0; essencial para seek correto no HLS
+            # Sem -use_wallclock_as_timestamps: ele atribuía PTS pelo relógio de
+            # chegada dos pacotes (bursty na rede), gerando offset de ~1.4s e
+            # desync de áudio que variava a cada segmento. Com o reset abaixo,
+            # cada segmento agora começa em PTS 0 limpo e consistente.
+            "-reset_timestamps", "1",
             "-segment_format", "mpegts",
             output_pattern
         ]
