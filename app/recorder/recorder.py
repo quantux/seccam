@@ -21,6 +21,7 @@ def start_recording(camera_name, rtsp_url):
         cmd = [
             "ffmpeg",
             "-fflags", "+genpts",
+            "-rtsp_transport", "tcp",
             "-i", rtsp_url,
             "-c:v", "copy",
             "-c:a", "aac",
