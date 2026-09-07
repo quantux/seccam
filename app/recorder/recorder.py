@@ -34,6 +34,7 @@ def start_recording(camera_name, rtsp_url):
             # cada segmento agora começa em PTS 0 limpo e consistente.
             "-reset_timestamps", "1",
             "-segment_format", "mpegts",
+            "-max_muxing_queue_size", "4096",
             output_pattern
         ]
 
