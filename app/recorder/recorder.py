@@ -27,6 +27,7 @@ def start_recording(camera_name, rtsp_url):
             "-c:a", "aac",
             "-f", "segment",
             "-segment_time", str(SEGMENT_TIME),
+            "-break_non_keyframes", "1",
             "-strftime", "1",
             # Sem -use_wallclock_as_timestamps: ele atribuía PTS pelo relógio de
             # chegada dos pacotes (bursty na rede), gerando offset de ~1.4s e
