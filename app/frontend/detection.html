@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Detecção de Pessoas</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/style.css?v=detection-v1">
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <span>Security Cameras</span>
+    </div>
+    <nav class="top-nav">
+      <a href="/">Player</a>
+      <a href="/detection.html" class="active">Detecção</a>
+    </nav>
+  </header>
+
+  <main class="detection-main">
+    <section class="panel-card roi-card">
+      <h2 class="panel-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+        </svg>
+        Área das portas (ROI)
+      </h2>
+
+      <div class="form-group">
+        <label for="camSelect">Câmera</label>
+        <select id="camSelect"></select>
+      </div>
+
+      <div class="roi-stage">
+        <canvas id="roiCanvas" width="640" height="360"></canvas>
+        <div id="roiEmpty" class="roi-empty">Clique em “Carregar frame” para desenhar a área das portas.</div>
+      </div>
+
+      <p id="roiReadout" class="status-msg">Arraste sobre a imagem para marcar a área da porta.</p>
+
+      <div class="roi-actions">
+        <button id="loadBtn" class="btn">Carregar frame</button>
+        <button id="clearRoiBtn" class="btn btn-secondary">Limpar ROI</button>
+      </div>
+    </section>
+
+    <aside class="controls-sidebar">
+      <div class="panel-card">
+        <h2 class="panel-title">Câmeras monitoradas</h2>
+        <div id="camList" class="cam-list"></div>
+
+        <div class="add-cam">
+          <div class="form-group">
+            <label for="newName">Nome</label>
+            <input type="text" id="newName" placeholder="camera_3">
+          </div>
+          <div class="form-group">
+            <label for="newSource">Fonte RTSP (stream2)</label>
+            <input type="text" id="newSource" placeholder="rtsp://192.168.1.2:8554/camera_3_sub">
+          </div>
+          <button id="addCamBtn" class="btn btn-secondary">Adicionar câmera</button>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <h2 class="panel-title">Regras</h2>
+        <div class="form-group">
+          <label for="dwell">Tempo parado para alertar (s)</label>
+          <input type="number" id="dwell" min="1" step="1">
+        </div>
+        <div class="form-group">
+          <label for="tolerance">Tolerância de ausência (s)</label>
+          <input type="number" id="tolerance" min="0" step="1">
+        </div>
+        <div class="form-group">
+          <label for="threshold">Confiança mínima (0-1)</label>
+          <input type="number" id="threshold" min="0.1" max="0.99" step="0.05">
+        </div>
+        <div class="form-group">
+          <label for="pollFps">FPS de análise</label>
+          <input type="number" id="pollFps" min="1" max="15" step="1">
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <h2 class="panel-title">ntfy</h2>
+        <div class="form-group">
+          <label for="ntfyUrl">Servidor</label>
+          <input type="text" id="ntfyUrl" placeholder="https://ntfy.sh">
+        </div>
+        <div class="form-group">
+          <label for="ntfyTopic">Tópico</label>
+          <input type="text" id="ntfyTopic" placeholder="seccam-porta-xxxxxxxx">
+        </div>
+        <div class="form-group">
+          <label for="ntfyToken">Token (opcional)</label>
+          <input type="text" id="ntfyToken" placeholder="tk_...">
+        </div>
+        <div class="form-group">
+          <label for="ntfyPriority">Prioridade</label>
+          <select id="ntfyPriority">
+            <option value="3">Default</option>
+            <option value="4">High</option>
+            <option value="5">Urgent</option>
+          </select>
+        </div>
+        <button id="testBtn" class="btn btn-secondary">Enviar notificação de teste</button>
+      </div>
+
+      <div class="save-bar">
+        <button id="saveBtn" class="btn">Salvar configuração</button>
+        <p id="saveMsg" class="status-msg"></p>
+      </div>
+    </aside>
+  </main>
+
+  <script src="./js/detection.js?v=detection-v1"></script>
+</body>
+</html>

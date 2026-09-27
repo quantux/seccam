@@ -445,3 +445,96 @@ select:focus, input[type="date"]:focus {
 .hidden {
   display: none !important;
 }
+
+/* ─── Detecção / ROI ─────────────────────────────────────────────────────── */
+.top-nav { display: flex; gap: 0.5rem; }
+.top-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+.top-nav a:hover { color: var(--text-main); background: rgba(255,255,255,0.06); }
+.top-nav a.active { color: #fff; background: var(--accent-color); }
+
+.detection-main { grid-template-columns: 1fr 380px; }
+@media (max-width: 1100px) { .detection-main { grid-template-columns: 1fr; } }
+
+.roi-stage {
+  position: relative;
+  margin: 1rem 0;
+  border: 1px solid var(--bg-card-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b0b0b;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.roi-stage canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+.roi-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem;
+}
+.roi-actions { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+
+.btn {
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+.btn:hover { background: var(--accent-hover); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: rgba(255,255,255,0.08); }
+.btn-secondary:hover { background: rgba(255,255,255,0.16); }
+
+.cam-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.cam-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name remove" "source source" "roi roi";
+  gap: 0.15rem 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--bg-card-border);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+}
+.cam-toggle { grid-area: name; display: flex; align-items: center; gap: 0.5rem; }
+.cam-name { font-weight: 600; font-size: 0.92rem; }
+.cam-source { grid-area: source; color: var(--text-muted); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-roi { grid-area: roi; color: #38bdf8; font-size: 0.72rem; }
+.cam-remove { grid-area: remove; background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 1rem; padding: 0 0.3rem; }
+.cam-remove:hover { color: #fca5a5; }
+
+.add-cam { border-top: 1px solid var(--bg-card-border); padding-top: 1rem; }
+.add-cam input, .controls-sidebar input, .controls-sidebar select {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 8px;
+  color: var(--text-main);
+  padding: 0.55rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.add-cam .btn { margin-top: 0.4rem; width: 100%; }
+.save-bar { position: sticky; bottom: 1rem; }
+.save-bar .btn { width: 100%; }

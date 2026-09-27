@@ -1,0 +1,33 @@
+{
+  "poll_fps": 5,
+  "detect_fps": 5,
+  "dwell_seconds": 5,
+  "absence_tolerance_seconds": 2,
+  "probability_threshold": 0.5,
+  "motion_threshold": 25,
+  "motion_ratio": 0.01,
+  "snapshot_max_width": 1280,
+  "snapshot_quality": 85,
+  "snapshot_keep_days": 7,
+  "notify": {
+    "url": "https://ntfy.sh",
+    "topic": "seccam-porta-TROQUE-ESTE-TOPICO",
+    "token": null,
+    "tags": "rotating_light",
+    "priority": "high"
+  },
+  "cameras": [
+    {
+      "name": "camera_3",
+      "enabled": true,
+      "source": "rtsp://192.168.1.2:8554/camera_3_sub",
+      "roi": null
+    },
+    {
+      "name": "camera_4",
+      "enabled": true,
+      "source": "rtsp://192.168.1.2:8554/camera_4_sub",
+      "roi": null
+    }
+  ]
+}

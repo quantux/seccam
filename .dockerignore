@@ -1,0 +1,7 @@
+**/__pycache__
+**/*.pyc
+videos
+configs
+.git
+.gitignore
+detection.example.json

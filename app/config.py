@@ -10,6 +10,11 @@ if not os.path.exists(VIDEOS_FOLDER) and os.path.exists("videos"):
 
 CAMERAS_JSON = os.path.join(CONFIG_FOLDER, "cameras.json")
 
+# --- Detecção de pessoas (ntfy) ---
+DETECTION_JSON = os.path.join(CONFIG_FOLDER, "detection.json")
+SNAPSHOTS_FOLDER = os.path.join(CONFIG_FOLDER, "snapshots")
+ENABLE_DETECTOR = os.getenv("ENABLE_DETECTOR", "1").strip().lower() not in ("0", "false", "no", "off")
+
 SEGMENT_TIME = int(os.getenv("SEGMENT_TIME", 60))  # segundos por arquivo (1 minuto)
 DAYS_TO_KEEP = int(os.getenv("DAYS_TO_KEEP", 3)) # manter gravações por X dias
 RETRY_DELAY = int(os.getenv("RETRY_DELAY", 10)) # Tempo de espera em segundos antes de reiniciar a gravação se o ffmpeg terminar ou falhar

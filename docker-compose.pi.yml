@@ -1,0 +1,11 @@
+# Override para Raspberry Pi (arm64): expõe o decoder de hardware H.264.
+# Uso:  docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d
+services:
+  seccam:
+    devices:
+      - /dev/video10:/dev/video10
+      - /dev/vchiq:/dev/vchiq
+    group_add:
+      - video
+    environment:
+      - SECCAM_HWACCEL=auto

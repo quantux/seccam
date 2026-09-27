@@ -20,7 +20,11 @@ def start_recording(camera_name, rtsp_url):
     while True:
         cmd = [
             "ffmpeg",
-            "-fflags", "+genpts",
+            # Timestamps pelo relógio de chegada (não pelo RTP da câmera):
+            # evita o wrap de 32 bits (~13h) e o DTS não-monotônico que
+            # travavam o segmentador. A fonte é o mediamtx via TCP, com
+            # entrega suave, então o sync A/V se mantém estável.
+            "-use_wallclock_as_timestamps", "1",
             "-rtsp_transport", "tcp",
             "-i", rtsp_url,
             "-c:v", "copy",
@@ -29,10 +33,6 @@ def start_recording(camera_name, rtsp_url):
             "-segment_time", str(SEGMENT_TIME),
             "-break_non_keyframes", "1",
             "-strftime", "1",
-            # Sem -use_wallclock_as_timestamps: ele atribuía PTS pelo relógio de
-            # chegada dos pacotes (bursty na rede), gerando offset de ~1.4s e
-            # desync de áudio que variava a cada segmento. Com o reset abaixo,
-            # cada segmento agora começa em PTS 0 limpo e consistente.
             "-reset_timestamps", "1",
             "-segment_format", "mpegts",
             "-max_muxing_queue_size", "4096",

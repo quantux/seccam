@@ -1,11 +1,15 @@
 import threading
 import time
+import logging
 import uvicorn
 from recorder.recorder import start_recording_for_all_cameras
 from recorder.process import upload_last_hours
 from cleaner import clean_old_videos
-from config import UPLOAD_TIMES
+from config import UPLOAD_TIMES, ENABLE_DETECTOR
 from api.server import app
+from detector.manager import start_detection
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 def run_web_server():
     """Inicia o servidor API FastAPI/Uvicorn para o player HLS no navegador."""
@@ -36,6 +40,8 @@ def main():
     threading.Thread(target=start_recording_for_all_cameras, daemon=True).start()
     threading.Thread(target=clean_old_videos, daemon=True).start()
     threading.Thread(target=schedule_upload, daemon=True).start()
+    if ENABLE_DETECTOR:
+        threading.Thread(target=start_detection, daemon=True).start()
 
     # Mantém o programa principal ativo
     while True:

@@ -8,6 +8,7 @@ from config import CONFIG_FOLDER, CAMERAS_JSON, VIDEOS_FOLDER
 from hls.playlist import get_available_dates, generate_m3u8_playlist
 from hls.segment import get_segment_file_response
 from hls.exporter import export_video_clip
+from api.detection import router as detection_router
 
 app = FastAPI(title="Security Camera HLS Playback API")
 
@@ -126,6 +127,8 @@ def export_clip(camera: str, date: str, start_time: str, end_time: str):
         raise HTTPException(status_code=400, detail="Parâmetros 'camera', 'date', 'start_time' e 'end_time' são obrigatórios.")
 
     return export_video_clip(camera, date, start_time, end_time)
+
+app.include_router(detection_router)
 
 # Servir arquivos estáticos do frontend (HTML, CSS, JS)
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
