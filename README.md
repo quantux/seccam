@@ -6,6 +6,7 @@ Sistema de gravação e monitoramento de câmeras RTSP com server web para visua
 
 - Gravação simultânea de múltiplas câmeras RTSP via ffmpeg
 - Player HLS ao vivo no navegador (http://localhost:8000)
+- Grade multicam com todas as câmeras ao vivo direto do mediamtx (`/multicam.html`)
 - Playback com timeline para navegar por data/hora
 - Upload automático para YouTube em horários configuráveis
 - Limpeza automática de vídeos antigos (retenção configurável)
@@ -53,6 +54,40 @@ docker compose up -d
 ```
 
 Acesse `http://localhost:8000` para ver as câmeras ao vivo.
+
+## Multicam viewer
+
+Acesse `http://<host>:8000/multicam.html` para ver todas as câmeras ao mesmo
+tempo, estilo multicam viewer. A página lê **direto do mediamtx**: o host e o
+path de cada stream são derivados da `rtsp_url` do `cameras.json`, trocando a
+porta RTSP pela porta HTTP do HLS do mediamtx (padrão `8888`).
+
+Recursos:
+
+- Grade que preenche 100% da tela, adaptando o número de linhas/colunas conforme
+  as câmeras escolhidas (ex.: 1 = tela cheia; 2 = lado a lado; 3 = duas em cima,
+  uma embaixo ocupando a largura toda).
+- Botão **☰** para escolher quais câmeras aparecem (a seleção fica salva no
+  navegador).
+- **Arrastar e soltar** um vídeo sobre o outro para reordenar as posições.
+- Duplo clique (ou botão ⛶ de cada vídeo) para tela cheia de uma câmera, e
+  botão **⛶** no topo para tela cheia da grade inteira.
+- Reconexão automática com backoff se uma câmera cair.
+
+> O navegador acessa o mediamtx diretamente, então a porta HLS do mediamtx
+> precisa estar acessível ao cliente (a mesma máquina do mediamtx, geralmente).
+> O mediamtx já responde com os cabeçalhos CORS necessários.
+
+### Configuração
+
+O host de cada stream vem da própria `rtsp_url`. Para sobrescrever ou ajustar a
+porta HTTP do HLS, use as variáveis de ambiente:
+
+| Variável               | Padrão | Descrição                              |
+|------------------------|--------|----------------------------------------|
+| `MEDIAMTX_HLS_PORT`    | `8888` | Porta HTTP do HLS no mediamtx          |
+| `MEDIAMTX_HLS_SCHEME`  | `http` | Esquema da URL HLS (`http` ou `https`) |
+| `MEDIAMTX_HOST`        | —      | Sobrescreve o host extraído da `rtsp_url` |
 
 ## Configuração
 

@@ -10,6 +10,14 @@ if not os.path.exists(VIDEOS_FOLDER) and os.path.exists("videos"):
 
 CAMERAS_JSON = os.path.join(CONFIG_FOLDER, "cameras.json")
 
+# --- Multicam viewer (HLS servido pelo mediamtx) ---
+# O host de cada stream é extraído da própria rtsp_url do cameras.json.
+# A porta HTTP do HLS no mediamtx é configurável (padrão 8888).
+MEDIAMTX_HLS_PORT = int(os.getenv("MEDIAMTX_HLS_PORT", "8888"))
+MEDIAMTX_HLS_SCHEME = os.getenv("MEDIAMTX_HLS_SCHEME", "http").strip() or "http"
+# Sobrescreve o host detectado na rtsp_url (ex.: usar o mesmo host do navegador).
+MEDIAMTX_HOST = os.getenv("MEDIAMTX_HOST", "").strip() or None
+
 # --- Detecção de pessoas (ntfy) ---
 DETECTION_JSON = os.path.join(CONFIG_FOLDER, "detection.json")
 SNAPSHOTS_FOLDER = os.path.join(CONFIG_FOLDER, "snapshots")

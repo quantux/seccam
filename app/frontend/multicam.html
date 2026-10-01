@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Multicam — Security Cameras</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./css/style.css?v=multicam-v5">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+</head>
+<body class="multicam-body">
+
+  <div id="camGrid" class="mc-grid"></div>
+
+  <div id="emptyMsg" class="mc-empty hidden">
+    <p>Nenhuma câmera selecionada. Clique em ☰ para escolher.</p>
+  </div>
+
+  <!-- Controles flutuantes (mínimos) -->
+  <div class="mc-float">
+    <button id="pickBtn" class="mc-fab" title="Escolher câmeras">☰</button>
+    <button id="fsAllBtn" class="mc-fab" title="Tela cheia">⛶</button>
+  </div>
+
+  <!-- Painel de seleção de câmeras -->
+  <div id="pickPanel" class="mc-panel hidden">
+    <div class="mc-panel-head">
+      <strong>Câmeras</strong>
+      <div class="mc-panel-actions">
+        <button id="pickAllBtn" class="mc-mini">Todas</button>
+        <button id="pickNoneBtn" class="mc-mini">Limpar</button>
+        <button id="closePickBtn" class="mc-x" title="Fechar">✕</button>
+      </div>
+    </div>
+    <div id="pickList" class="mc-pick-list"></div>
+  </div>
+
+  <script src="./js/multicam.js?v=multicam-v5"></script>
+</body>
+</html>
