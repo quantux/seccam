@@ -141,10 +141,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const player = { video, hls: null, retry: 0, retryTimer: null };
     players.set(cam.name, player);
 
+    const zoom = enableZoom(tile, video);
+
     video.addEventListener('playing', () => { player.retry = 0; });
     video.addEventListener('error', () => { if (!player.hls) scheduleRetry(cam.name, 'erro'); });
 
-    tile.addEventListener('dblclick', () => toggleFullscreen(tile));
+    // Duplo toque/clique: se ampliado, volta ao normal; senão, tela cheia.
+    tile.addEventListener('dblclick', () => {
+      if (zoom.isZoomed()) zoom.reset();
+      else toggleFullscreen(tile);
+    });
 
     // ── Drag and drop ──
     tile.addEventListener('dragstart', (e) => {
@@ -177,6 +183,115 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     return tile;
+  }
+
+  // ── Zoom por câmera (pinça no toque / roda no desktop) ────────────────────
+  function enableZoom(tile, video) {
+    const MIN = 1, MAX = 8;
+    let scale = 1, tx = 0, ty = 0;
+    const pointers = new Map();
+    let pinch = null;
+    let panStart = null;
+
+    function apply() {
+      video.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      tile.classList.toggle('is-zoomed', scale > 1.01);
+      // Enquanto ampliado, o arrastar serve para navegar (não para reordenar).
+      tile.draggable = scale <= 1.01;
+    }
+
+    function clampTranslate() {
+      const r = tile.getBoundingClientRect();
+      const maxX = (scale - 1) * r.width / 2;
+      const maxY = (scale - 1) * r.height / 2;
+      tx = Math.max(-maxX, Math.min(maxX, tx));
+      ty = Math.max(-maxY, Math.min(maxY, ty));
+    }
+
+    function reset() {
+      scale = 1; tx = 0; ty = 0;
+      pinch = null; panStart = null; pointers.clear();
+      apply();
+    }
+
+    function rel(pt) {
+      const r = tile.getBoundingClientRect();
+      return { x: pt.clientX - r.left - r.width / 2, y: pt.clientY - r.top - r.height / 2 };
+    }
+    const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const mid = (a, b) => ({ clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 });
+
+    tile.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.mc-btn')) return;
+      // Com escala 1 e mouse, deixa o drag-and-drop nativo agir.
+      if (e.pointerType === 'mouse' && scale <= 1.01) return;
+      pointers.set(e.pointerId, e);
+      try { tile.setPointerCapture(e.pointerId); } catch (_) {}
+
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = { d: dist(a, b), scale, m: rel(mid(a, b)), tx, ty };
+        panStart = null;
+      } else if (pointers.size === 1 && scale > 1.01) {
+        panStart = { x: e.clientX, y: e.clientY, tx, ty };
+      }
+    });
+
+    tile.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, e);
+
+      if (pointers.size >= 2 && pinch) {
+        const [a, b] = [...pointers.values()];
+        const ns = Math.max(MIN, Math.min(MAX, pinch.scale * (dist(a, b) / pinch.d)));
+        const k = ns / pinch.scale;
+        const m = rel(mid(a, b));
+        tx = m.x - (pinch.m.x - pinch.tx) * k;
+        ty = m.y - (pinch.m.y - pinch.ty) * k;
+        scale = ns;
+        clampTranslate();
+        apply();
+        e.preventDefault();
+      } else if (pointers.size === 1 && panStart && scale > 1.01) {
+        tx = panStart.tx + (e.clientX - panStart.x);
+        ty = panStart.ty + (e.clientY - panStart.y);
+        clampTranslate();
+        apply();
+        e.preventDefault();
+      }
+    });
+
+    function endPointer(e) {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      try { tile.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (pointers.size < 2) pinch = null;
+      if (pointers.size === 1 && scale > 1.01) {
+        const p = [...pointers.values()][0];
+        panStart = { x: p.clientX, y: p.clientY, tx, ty };
+      } else if (pointers.size === 0) {
+        panStart = null;
+      }
+      if (scale <= 1.01) reset();
+    }
+    tile.addEventListener('pointerup', endPointer);
+    tile.addEventListener('pointercancel', endPointer);
+
+    // Roda do mouse: zoom no ponto do cursor.
+    tile.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const ns = Math.max(MIN, Math.min(MAX, scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      const k = ns / scale;
+      const m = rel(e);
+      tx = m.x - (m.x - tx) * k;
+      ty = m.y - (m.y - ty) * k;
+      scale = ns;
+      if (scale <= 1.01) reset();
+      else { clampTranslate(); apply(); }
+    }, { passive: false });
+
+    apply();
+    return { isZoomed: () => scale > 1.01, reset };
   }
 
   function setStatus(tile, text, cls) {

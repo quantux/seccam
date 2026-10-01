@@ -70,8 +70,10 @@ Recursos:
 - Botão **☰** para escolher quais câmeras aparecem (a seleção fica salva no
   navegador).
 - **Arrastar e soltar** um vídeo sobre o outro para reordenar as posições.
-- Duplo clique (ou botão ⛶ de cada vídeo) para tela cheia de uma câmera, e
-  botão **⛶** no topo para tela cheia da grade inteira.
+- **Zoom por câmera**: pinça (toque) ou roda do mouse amplia o vídeo; quando
+  ampliado, arrastar navega pela imagem. Duplo toque/clique volta ao normal.
+- Duplo toque/clique (ou botão ⛶ de cada vídeo) para tela cheia de uma câmera,
+  e botão **⛶** no topo para tela cheia da grade inteira.
 - Reconexão automática com backoff se uma câmera cair.
 
 > O navegador acessa o mediamtx diretamente, então a porta HLS do mediamtx
