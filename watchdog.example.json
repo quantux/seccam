@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "check_interval_seconds": 30,
+  "offline_threshold_seconds": 180,
+  "reboot_cooldown_seconds": 900,
+  "power_off_seconds": 25,
+  "gate_ips": ["192.168.1.57", "192.168.1.58"],
+  "tapo": {
+    "username": "email@exemplo.com",
+    "password": "senha-da-conta-tplink"
+  },
+  "cameras": [
+    { "name": "camera_1", "plug_ip": "192.168.1.110" },
+    { "name": "camera_2", "plug_ip": "192.168.1.111" },
+    { "name": "camera_3", "plug_ip": "192.168.1.112" },
+    { "name": "camera_5", "plug_ip": "192.168.1.114" }
+  ]
+}

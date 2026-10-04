@@ -60,10 +60,13 @@ Acesse `http://localhost:8000` para ver as câmeras ao vivo.
 Acesse `http://<host>:8000/multicam.html` para ver todas as câmeras ao mesmo
 tempo, estilo multicam viewer. A página lê **direto do mediamtx**: o host e o
 path de cada stream são derivados da `rtsp_url` do `cameras.json`, trocando a
-porta RTSP pela porta HTTP do HLS do mediamtx (padrão `8888`).
+porta RTSP pelas portas HTTP do **WebRTC/WHEP** (padrão `8889`, baixa latência,
+~0,3–0,5s) e do **HLS** (padrão `8888`, usado como fallback).
 
 Recursos:
 
+- **Baixa latência via WebRTC (WHEP)**, com fallback automático para HLS se o
+  navegador não suportar WebRTC.
 - Grade que preenche 100% da tela, adaptando o número de linhas/colunas conforme
   as câmeras escolhidas (ex.: 1 = tela cheia; 2 = lado a lado; 3 = duas em cima,
   uma embaixo ocupando a largura toda).
@@ -76,20 +79,23 @@ Recursos:
   e botão **⛶** no topo para tela cheia da grade inteira.
 - Reconexão automática com backoff se uma câmera cair.
 
-> O navegador acessa o mediamtx diretamente, então a porta HLS do mediamtx
-> precisa estar acessível ao cliente (a mesma máquina do mediamtx, geralmente).
-> O mediamtx já responde com os cabeçalhos CORS necessários.
+> O navegador acessa o mediamtx diretamente, então as portas do mediamtx
+> (WebRTC `8889` TCP + ICE `8189` UDP, e HLS `8888`) precisam estar acessíveis
+> ao cliente (a mesma máquina do mediamtx, geralmente). O mediamtx já responde
+> com os cabeçalhos CORS necessários.
 
 ### Configuração
 
-O host de cada stream vem da própria `rtsp_url`. Para sobrescrever ou ajustar a
-porta HTTP do HLS, use as variáveis de ambiente:
+O host de cada stream vem da própria `rtsp_url`. Para sobrescrever ou ajustar as
+portas, use as variáveis de ambiente:
 
-| Variável               | Padrão | Descrição                              |
-|------------------------|--------|----------------------------------------|
-| `MEDIAMTX_HLS_PORT`    | `8888` | Porta HTTP do HLS no mediamtx          |
-| `MEDIAMTX_HLS_SCHEME`  | `http` | Esquema da URL HLS (`http` ou `https`) |
-| `MEDIAMTX_HOST`        | —      | Sobrescreve o host extraído da `rtsp_url` |
+| Variável                  | Padrão | Descrição                                |
+|---------------------------|--------|------------------------------------------|
+| `MEDIAMTX_WEBRTC_PORT`    | `8889` | Porta HTTP do WebRTC/WHEP no mediamtx    |
+| `MEDIAMTX_WEBRTC_SCHEME`  | =HLS   | Esquema do WebRTC (`http` ou `https`)    |
+| `MEDIAMTX_HLS_PORT`       | `8888` | Porta HTTP do HLS no mediamtx (fallback) |
+| `MEDIAMTX_HLS_SCHEME`     | `http` | Esquema da URL HLS (`http` ou `https`)   |
+| `MEDIAMTX_HOST`           | —      | Sobrescreve o host extraído da `rtsp_url`|
 
 ## Configuração
 
@@ -190,3 +196,35 @@ docker buildx build --platform linux/amd64,linux/arm64 -t <usuario>/seccam:lates
 ### Desativar a detecção
 
 `ENABLE_DETECTOR=0` no ambiente do container (ou remova as câmeras do `detection.json`).
+
+## Watchdog das câmeras (reinício automático pela tomada)
+
+Algumas câmeras WiFi não reconectam sozinhas após uma queda de energia e só
+voltam se a energia da tomada for reiniciada. O watchdog automatiza isso:
+
+- Monitora continuamente, via mediamtx, se o caminho de cada câmera está no ar.
+- Se ficar **offline** além de `offline_threshold_seconds`, desliga e religa a
+  **tomada Tapo** daquela câmera (via [python-kasa](https://python-kasa.readthedocs.io/)).
+- Só reinicia se **todos** os `gate_ips` (APs/roteadores) estiverem no ar — não
+  adianta reiniciar a câmera enquanto o WiFi dela está fora.
+- Se não conseguir falar com o mediamtx (`unknown`), não reinicia nada (evita
+  reboot em massa quando o problema é a própria rede/mediamtx).
+
+Gerenciado por `configs/watchdog.json` (veja `watchdog.example.json`):
+
+| Campo | Padrão | Descrição |
+|-------|--------|-----------|
+| `enabled` | `true` | Liga/desliga o watchdog |
+| `check_interval_seconds` | `30` | Intervalo entre verificações |
+| `offline_threshold_seconds` | `180` | Tempo offline antes de reiniciar |
+| `reboot_cooldown_seconds` | `900` | Tempo mínimo entre reinícios da mesma câmera |
+| `power_off_seconds` | `15` | Tempo com a tomada desligada |
+| `gate_ips` | — | IPs dos APs que precisam estar no ar (ex.: Archer C7 e TL-WA850RE) |
+| `tapo.username` / `tapo.password` | — | Conta TP-Link (necessária para controlar as Tapo) |
+| `cameras[].name` | — | Nome do caminho no mediamtx (ex.: `camera_1`) |
+| `cameras[].plug_ip` | — | IP da tomada daquela câmera |
+
+API: `GET /api/watchdog` (config + status), `POST /api/watchdog` (salvar) e
+`POST /api/watchdog/reboot/<camera>` (reiniciar agora, para teste).
+
+Desative com `ENABLE_WATCHDOG=0` no ambiente do container.

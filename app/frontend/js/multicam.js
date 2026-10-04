@@ -138,13 +138,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     tile.append(video, status, fsBtn);
 
-    const player = { video, hls: null, retry: 0, retryTimer: null };
+    const player = { video, hls: null, pc: null, whepLocation: null, usingWebrtc: false, retry: 0, retryTimer: null };
     players.set(cam.name, player);
 
     const zoom = enableZoom(tile, video);
 
     video.addEventListener('playing', () => { player.retry = 0; });
-    video.addEventListener('error', () => { if (!player.hls) scheduleRetry(cam.name, 'erro'); });
+    video.addEventListener('error', () => { if (!player.hls && !player.pc) scheduleRetry(cam.name, 'erro'); });
 
     // Duplo toque/clique: se ampliado, volta ao normal; senão, tela cheia.
     tile.addEventListener('dblclick', () => {
@@ -319,13 +319,83 @@ document.addEventListener('DOMContentLoaded', () => {
     renderGrid();
   }
 
-  // ── Stream HLS ────────────────────────────────────────────────────────────
+  // ── Streams: WebRTC (WHEP) por padrão, HLS como fallback ─────────────────
   function startStream(name) {
     const cam = allCams.find((c) => c.name === name);
     const player = players.get(name);
     if (!cam || !player) return;
-    destroyHls(player);
+    destroyStreams(player);
     setStatus(tiles.get(name), '');
+
+    if (cam.webrtc_url && window.RTCPeerConnection) {
+      startWhep(name, cam, player);
+    } else {
+      startHls(name, cam, player);
+    }
+  }
+
+  function startWhep(name, cam, player) {
+    let pc;
+    try {
+      pc = new RTCPeerConnection({ iceServers: [] });
+    } catch (_) {
+      startHls(name, cam, player);
+      return;
+    }
+    player.pc = pc;
+    player.usingWebrtc = true;
+
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+
+    pc.ontrack = (ev) => {
+      if (ev.streams && ev.streams[0]) {
+        player.video.srcObject = ev.streams[0];
+      } else {
+        const stream = player.video.srcObject || new MediaStream();
+        stream.addTrack(ev.track);
+        player.video.srcObject = stream;
+      }
+      player.video.play().catch(() => {});
+    };
+
+    pc.addEventListener('connectionstatechange', () => {
+      if (player.pc !== pc) return; // já substituído/limpo
+      if (pc.connectionState === 'failed') {
+        scheduleRetry(name, 'reconectando');
+      }
+    });
+
+    (async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitIceGathering(pc, 2000);
+        const res = await fetch(cam.webrtc_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/sdp' },
+          body: pc.localDescription.sdp,
+        });
+        if (!res.ok) throw new Error('WHEP ' + res.status);
+        const loc = res.headers.get('Location');
+        if (loc) player.whepLocation = new URL(loc, cam.webrtc_url).toString();
+        const answer = await res.text();
+        await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+        player.video.play().catch(() => {});
+      } catch (_) {
+        // WebRTC falhou: cai para HLS.
+        if (player.pc === pc) {
+          destroyWhep(player);
+          startHls(name, cam, player);
+        }
+      }
+    })();
+  }
+
+  function startHls(name, cam, player) {
+    destroyWhep(player);
+    player.usingWebrtc = false;
+    if (!cam.hls_url) { setStatus(tiles.get(name), 'sem stream', 'is-error'); return; }
 
     if (window.Hls && window.Hls.isSupported()) {
       const hls = new window.Hls(HLS_CONFIG);
@@ -342,10 +412,40 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (player.video.canPlayType('application/vnd.apple.mpegurl')) {
       player.video.src = cam.hls_url;
     } else {
-      setStatus(tiles.get(name), 'HLS não suportado', 'is-error');
+      setStatus(tiles.get(name), 'vídeo não suportado', 'is-error');
       return;
     }
     player.video.play().catch(() => {});
+  }
+
+  function waitIceGathering(pc, timeoutMs) {
+    return new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      const done = () => {
+        pc.removeEventListener('icegatheringstatechange', onChange);
+        resolve();
+      };
+      const onChange = () => { if (pc.iceGatheringState === 'complete') done(); };
+      pc.addEventListener('icegatheringstatechange', onChange);
+      setTimeout(done, timeoutMs);
+    });
+  }
+
+  function destroyWhep(player) {
+    if (player.whepLocation) {
+      try { fetch(player.whepLocation, { method: 'DELETE', keepalive: true }); } catch (_) {}
+      player.whepLocation = null;
+    }
+    if (player.pc) {
+      const pc = player.pc;
+      player.pc = null;
+      try { pc.ontrack = null; } catch (_) {}
+      try { pc.close(); } catch (_) {}
+    }
+    if (player.video && player.video.srcObject) {
+      try { player.video.srcObject = null; } catch (_) {}
+    }
+    player.usingWebrtc = false;
   }
 
   function destroyHls(player) {
@@ -355,11 +455,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function destroyStreams(player) {
+    destroyWhep(player);
+    destroyHls(player);
+  }
+
   function destroyPlayer(name) {
     const player = players.get(name);
     if (!player) return;
     clearTimeout(player.retryTimer);
-    destroyHls(player);
+    destroyStreams(player);
     players.delete(name);
   }
 

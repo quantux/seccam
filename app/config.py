@@ -10,11 +10,13 @@ if not os.path.exists(VIDEOS_FOLDER) and os.path.exists("videos"):
 
 CAMERAS_JSON = os.path.join(CONFIG_FOLDER, "cameras.json")
 
-# --- Multicam viewer (HLS servido pelo mediamtx) ---
+# --- Multicam viewer (HLS/WebRTC servidos pelo mediamtx) ---
 # O host de cada stream é extraído da própria rtsp_url do cameras.json.
-# A porta HTTP do HLS no mediamtx é configurável (padrão 8888).
+# Portas HTTP do HLS (padrão 8888) e do WebRTC/WHEP (padrão 8889) no mediamtx.
 MEDIAMTX_HLS_PORT = int(os.getenv("MEDIAMTX_HLS_PORT", "8888"))
 MEDIAMTX_HLS_SCHEME = os.getenv("MEDIAMTX_HLS_SCHEME", "http").strip() or "http"
+MEDIAMTX_WEBRTC_PORT = int(os.getenv("MEDIAMTX_WEBRTC_PORT", "8889"))
+MEDIAMTX_WEBRTC_SCHEME = os.getenv("MEDIAMTX_WEBRTC_SCHEME", MEDIAMTX_HLS_SCHEME).strip() or "http"
 # Sobrescreve o host detectado na rtsp_url (ex.: usar o mesmo host do navegador).
 MEDIAMTX_HOST = os.getenv("MEDIAMTX_HOST", "").strip() or None
 
@@ -22,6 +24,10 @@ MEDIAMTX_HOST = os.getenv("MEDIAMTX_HOST", "").strip() or None
 DETECTION_JSON = os.path.join(CONFIG_FOLDER, "detection.json")
 SNAPSHOTS_FOLDER = os.path.join(CONFIG_FOLDER, "snapshots")
 ENABLE_DETECTOR = os.getenv("ENABLE_DETECTOR", "1").strip().lower() not in ("0", "false", "no", "off")
+
+# --- Watchdog das câmeras (reinicia tomada Tapo se a câmera não voltar) ---
+WATCHDOG_JSON = os.path.join(CONFIG_FOLDER, "watchdog.json")
+ENABLE_WATCHDOG = os.getenv("ENABLE_WATCHDOG", "1").strip().lower() not in ("0", "false", "no", "off")
 
 SEGMENT_TIME = int(os.getenv("SEGMENT_TIME", 60))  # segundos por arquivo (1 minuto)
 DAYS_TO_KEEP = int(os.getenv("DAYS_TO_KEEP", 3)) # manter gravações por X dias

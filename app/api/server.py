@@ -10,6 +10,7 @@ from hls.segment import get_segment_file_response
 from hls.exporter import export_video_clip
 from api.detection import router as detection_router
 from api.live import router as live_router
+from api.watchdog import router as watchdog_router
 
 app = FastAPI(title="Security Camera HLS Playback API")
 
@@ -131,6 +132,7 @@ def export_clip(camera: str, date: str, start_time: str, end_time: str):
 
 app.include_router(detection_router)
 app.include_router(live_router)
+app.include_router(watchdog_router)
 
 # Servir arquivos estáticos do frontend (HTML, CSS, JS)
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")

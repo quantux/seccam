@@ -8,6 +8,7 @@ from cleaner import clean_old_videos
 from config import UPLOAD_TIMES, ENABLE_DETECTOR
 from api.server import app
 from detector.manager import start_detection
+from camera_watchdog import start_watchdog
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -42,6 +43,7 @@ def main():
     threading.Thread(target=schedule_upload, daemon=True).start()
     if ENABLE_DETECTOR:
         threading.Thread(target=start_detection, daemon=True).start()
+    start_watchdog()
 
     # Mantém o programa principal ativo
     while True:

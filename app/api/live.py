@@ -1,9 +1,9 @@
-"""API do multicam viewer: descobre as streams HLS no mediamtx.
+"""API do multicam viewer: descobre as streams no mediamtx (HLS e WebRTC).
 
 O endereco de cada stream e derivado da `rtsp_url` configurada no
-`cameras.json` (mesmo host e mesmo path), trocando a porta RTSP pela porta
-HTTP do HLS do mediamtx. Assim a grade de cameras le direto do mediamtx,
-sem passar pelo backend.
+`cameras.json` (mesmo host e mesmo path), trocando a porta RTSP pelas portas
+HTTP do HLS (padrao 8888) e do WebRTC/WHEP (padrao 8889) do mediamtx. Assim a
+grade de cameras le direto do mediamtx, sem passar pelo backend.
 """
 
 import json
@@ -17,6 +17,8 @@ from config import (
     MEDIAMTX_HLS_PORT,
     MEDIAMTX_HLS_SCHEME,
     MEDIAMTX_HOST,
+    MEDIAMTX_WEBRTC_PORT,
+    MEDIAMTX_WEBRTC_SCHEME,
 )
 
 router = APIRouter(prefix="/api/live", tags=["live"])
@@ -52,9 +54,15 @@ def _hls_url(host, path):
     return f"{MEDIAMTX_HLS_SCHEME}://{host}:{MEDIAMTX_HLS_PORT}/{path}/index.m3u8"
 
 
+def _webrtc_url(host, path):
+    if not host or not path:
+        return None
+    return f"{MEDIAMTX_WEBRTC_SCHEME}://{host}:{MEDIAMTX_WEBRTC_PORT}/{path}/whep"
+
+
 @router.get("")
 def list_live():
-    """Lista as cameras com a URL HLS servida pelo mediamtx."""
+    """Lista as cameras com as URLs HLS e WebRTC (WHEP) do mediamtx."""
     cameras = []
     for cam in load_cameras():
         name = cam.get("name")
@@ -64,6 +72,7 @@ def list_live():
                 "name": name,
                 "path": path,
                 "hls_url": _hls_url(host, path),
+                "webrtc_url": _webrtc_url(host, path),
             }
         )
     return {"cameras": cameras}
