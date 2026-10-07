@@ -130,13 +130,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const status = document.createElement('span');
     status.className = 'mc-status';
 
+    const audioBtn = document.createElement('button');
+    audioBtn.className = 'mc-btn mc-audio-btn';
+    audioBtn.title = 'Ativar som';
+    audioBtn.textContent = '🔇';
+    audioBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleAudio(cam.name); });
+
     const fsBtn = document.createElement('button');
     fsBtn.className = 'mc-btn';
     fsBtn.title = 'Tela cheia';
     fsBtn.textContent = '⛶';
     fsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(tile); });
 
-    tile.append(video, status, fsBtn);
+    tile.append(video, status, audioBtn, fsBtn);
 
     const player = { video, hls: null, pc: null, whepLocation: null, usingWebrtc: false, retry: 0, retryTimer: null };
     players.set(cam.name, player);
@@ -299,6 +305,39 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!el) return;
     el.textContent = text;
     el.className = 'mc-status' + (cls ? ' ' + cls : '');
+  }
+
+  // ── Áudio ─────────────────────────────────────────────────────────────────
+  // Ativa o som de UMA câmera (modo solo) e silencia as demais. O clique do
+  // usuário é o gesto exigido pelo navegador para liberar áudio no autoplay.
+  function updateAudioBtn(tile, muted) {
+    const btn = tile && tile.querySelector('.mc-audio-btn');
+    if (!btn) return;
+    btn.textContent = muted ? '🔇' : '🔊';
+    btn.title = muted ? 'Ativar som' : 'Silenciar';
+  }
+
+  function toggleAudio(name) {
+    const player = players.get(name);
+    if (!player) return;
+    const v = player.video;
+    const turnOn = v.muted; // estava mudo -> agora liga
+
+    if (turnOn) {
+      players.forEach((p, n) => {
+        if (n !== name && !p.video.muted) {
+          p.video.muted = true;
+          updateAudioBtn(tiles.get(n), true);
+        }
+      });
+      v.muted = false;
+      v.volume = 1;
+    } else {
+      v.muted = true;
+    }
+
+    updateAudioBtn(tiles.get(name), v.muted);
+    if (turnOn) v.play().catch(() => {});
   }
 
   // ── Reordenar com drag ────────────────────────────────────────────────────

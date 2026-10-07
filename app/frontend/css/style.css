@@ -623,6 +623,9 @@ body.multicam-body { overflow: hidden; background: #000; }
 .mc-tile:hover .mc-btn { opacity: 1; }
 .mc-btn:hover { background: var(--accent-color); }
 
+/* Botão de som fica à esquerda do de tela cheia */
+.mc-audio-btn { right: 50px; }
+
 /* Em telas de toque o botão de tela cheia fica sempre visível */
 @media (hover: none) {
   .mc-btn { opacity: 1; }
