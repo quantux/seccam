@@ -308,8 +308,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Áudio ─────────────────────────────────────────────────────────────────
-  // Ativa o som de UMA câmera (modo solo) e silencia as demais. O clique do
-  // usuário é o gesto exigido pelo navegador para liberar áudio no autoplay.
+  // Cada câmera tem mute independente: o usuário pode ligar o som de várias
+  // (ou de todas) ao mesmo tempo. O clique é o gesto exigido pelo navegador
+  // para liberar áudio no autoplay.
   function updateAudioBtn(tile, muted) {
     const btn = tile && tile.querySelector('.mc-audio-btn');
     if (!btn) return;
@@ -321,23 +322,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const player = players.get(name);
     if (!player) return;
     const v = player.video;
-    const turnOn = v.muted; // estava mudo -> agora liga
 
-    if (turnOn) {
-      players.forEach((p, n) => {
-        if (n !== name && !p.video.muted) {
-          p.video.muted = true;
-          updateAudioBtn(tiles.get(n), true);
-        }
-      });
-      v.muted = false;
+    v.muted = !v.muted; // alterna só esta câmera
+    if (!v.muted) {
       v.volume = 1;
-    } else {
-      v.muted = true;
+      v.play().catch(() => {});
     }
 
     updateAudioBtn(tiles.get(name), v.muted);
-    if (turnOn) v.play().catch(() => {});
   }
 
   // ── Reordenar com drag ────────────────────────────────────────────────────
