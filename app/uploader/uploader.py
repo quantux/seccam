@@ -79,7 +79,7 @@ def initialize_upload(youtube, file_path, title):
                 file_path, chunksize=-1, resumable=True, mimetype="video/x-matroska"
             )
     )
-    resumable_upload(insert_request, title)
+    return resumable_upload(insert_request, title)
 
 
 def resumable_upload(insert_request, title):
@@ -113,3 +113,5 @@ def resumable_upload(insert_request, title):
             log(f"{error}. Tentando novamente em {sleep_time:.1f}s...", "warning")
             time.sleep(sleep_time)
             error = None
+
+    return response

@@ -33,6 +33,9 @@ SEGMENT_TIME = int(os.getenv("SEGMENT_TIME", 60))  # segundos por arquivo (1 min
 DAYS_TO_KEEP = int(os.getenv("DAYS_TO_KEEP", 3)) # manter gravações por X dias
 RETRY_DELAY = int(os.getenv("RETRY_DELAY", 10)) # Tempo de espera em segundos antes de reiniciar a gravação se o ffmpeg terminar ou falhar
 UPLOAD_TIMES = [(7, 0), (19, 0)]  # horários de upload
+# Limite de duração do vídeo enviado ao YouTube. O limite da plataforma é 12h;
+# usamos 11:59:59 para ficar abaixo dele. Pode ser sobrescrito por variável de ambiente.
+MAX_UPLOAD_DURATION = int(os.getenv("MAX_UPLOAD_DURATION", 11 * 3600 + 59 * 60 + 59))
 
 CLIENT_SECRETS_FILE = os.path.join(CONFIG_FOLDER, "secrets", "client_secrets.json")
 TOKENS_FILE = os.path.join(CONFIG_FOLDER, "secrets", "tokens.json")
