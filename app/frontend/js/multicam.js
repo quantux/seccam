@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tiles = new Map(); // name -> <figure>
   const players = new Map(); // name -> { video, hls, retry, retryTimer }
   let dragName = null;
-  let fsActive = false; // true enquanto QUALQUER elemento esta em tela cheia
+  let pendingRender = false; // mudou a selecao durante fullscreen de um tile
 
   // ── Seleção persistida ────────────────────────────────────────────────────
   function loadSelection() {
@@ -67,11 +67,20 @@ document.addEventListener('DOMContentLoaded', () => {
     return rows;
   }
 
+  // Só não remontamos a grade quando um TILE está em tela cheia (mover o
+  // elemento no DOM faria o navegador sair da tela cheia). Quando o elemento
+  // em fullscreen é a própria grade (<html>), remontar é seguro.
+  // A checagem é feita direto no DOM: nunca usamos uma flag que possa ficar
+  // presa se o navegador não disparar o evento fullscreenchange.
+  function canRenderNow() {
+    const el = currentFullscreenEl();
+    return !el || el === document.documentElement;
+  }
+
   function renderGrid() {
     if (!selected) return;
-    // Nunca remonta a grade durante o fullscreen: mover o elemento no DOM
-    // faria o navegador sair da tela cheia.
-    if (fsActive || document.fullscreenElement || document.webkitFullscreenElement) return;
+    if (!canRenderNow()) { pendingRender = true; return; }
+    pendingRender = false;
     const valid = new Set(allCams.map((c) => c.name));
     selected = selected.filter((n) => valid.has(n));
 
@@ -516,23 +525,22 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleFullscreen(el) {
     const active = currentFullscreenEl();
     if (active === el) {
-      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document);
       return;
     }
-    fsActive = true; // marca antes para o renderGrid nao remontar a grade
     const req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (!req) { fsActive = false; return; }
+    if (!req) return;
     try {
       const res = req.call(el);
-      if (res && typeof res.catch === 'function') res.catch(() => { fsActive = false; });
-    } catch (_) {
-      fsActive = false;
-    }
+      if (res && typeof res.catch === 'function') res.catch(() => {});
+    } catch (_) {}
   }
 
   function onFsChange() {
-    fsActive = !!currentFullscreenEl();
-    if (!fsActive) renderGrid();
+    // Ao entrar no fullscreen da grade ou sair de qualquer fullscreen, aplica
+    // mudancas que ficaram pendentes (ex.: cameras ocultadas/exibidas).
+    if (canRenderNow()) renderGrid();
   }
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
@@ -576,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Resize ────────────────────────────────────────────────────────────────
   let resizeTimer = null;
   window.addEventListener('resize', () => {
-    if (fsActive || currentFullscreenEl()) return;
+    if (!canRenderNow()) return;
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(renderGrid, 150);
   });
