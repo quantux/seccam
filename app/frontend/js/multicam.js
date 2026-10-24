@@ -48,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function computeRows(n, W, H) {
     if (n <= 0) return [];
     if (n === 1) return [1];
+    // Com 2 cameras, sempre lado a lado (uma linha, duas colunas),
+    // independente da orientacao/tela cheia.
+    if (n === 2) return [2];
     const target = 16 / 9;
     let best = null;
     for (let c = 1; c <= n; c++) {
