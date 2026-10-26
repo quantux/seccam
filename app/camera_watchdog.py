@@ -389,7 +389,12 @@ def _tick():
             st["last_message"] = f"{reason} ha {int(outage)}s"
             continue
         if not gates:
-            st["last_message"] = "offline; APs (gate) fora do ar"
+            # Roteadores/APs fora do ar: NAO reinicia camera nem tomada.
+            # Apenas aguarda. Reseta o ciclo para que, quando voltarem,
+            # a recuperacao comece pela camera (e depois a tomada, se falhar).
+            st["stage"] = None
+            st["last_reboot"] = None
+            st["last_message"] = "roteadores (APs) fora do ar; aguardando voltar"
             continue
 
         cam_ip, cam_user, cam_pw, cloud = camera_creds(name, cfg, cam)
