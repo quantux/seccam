@@ -40,6 +40,10 @@ DEFAULTS = {
     "stall_seconds": 300,
     # Tempo de espera para a camera voltar apos o reboot antes de partir p/ tomada.
     "camera_reboot_wait_seconds": 180,
+    # Intervalo minimo entre reboots de cameras (evita rate-limit do Tapo).
+    "camera_reboot_min_interval_seconds": 30,
+    # Quando o Tapo responde "Temporary Suspension", espera antes de tentar de novo.
+    "rate_limit_cooldown_seconds": 1800,
     "reboot_cooldown_seconds": 900,
     "power_off_seconds": 15,
     "gate_ips": [],
@@ -279,6 +283,9 @@ def reboot_plug(ip, username, password, off_seconds):
 
 
 # ── Estado / loop ─────────────────────────────────────────────────────────────
+_last_camera_reboot_ts = 0.0
+
+
 def _get_status(name):
     with _lock:
         return _status.setdefault(
@@ -290,6 +297,7 @@ def _get_status(name):
                 "stage": None,
                 "stage_since": 0,
                 "last_reboot": None,
+                "rate_limited_until": 0,
                 "last_message": "",
             },
         )
@@ -300,7 +308,27 @@ def get_status():
         return {k: dict(v) for k, v in _status.items()}
 
 
+def _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
+    """Reinicia a tomada e atualiza o estado. Retorna True se deu certo."""
+    if not (plug and tapo.get("username")):
+        return False
+    try:
+        log.info("Reiniciando tomada de %s (%s)", name, plug)
+        reboot_plug(plug, tapo["username"], tapo.get("password", ""), off_seconds)
+        st["stage"] = "plug"
+        st["stage_since"] = now
+        st["last_reboot"] = now
+        st["last_message"] = "tomada reiniciada"
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Falha ao reiniciar tomada de %s: %s", name, exc)
+        st["last_message"] = f"falha ao reiniciar tomada: {exc}"
+        return False
+
+
 def _tick():
+    global _last_camera_reboot_ts
+
     cfg = load_settings()
     if not cfg.get("enabled"):
         return
@@ -308,6 +336,8 @@ def _tick():
     threshold = int(cfg.get("offline_threshold_seconds", 180))
     stall = int(cfg.get("stall_seconds", 300))
     cam_wait = int(cfg.get("camera_reboot_wait_seconds", 180))
+    cam_min_interval = int(cfg.get("camera_reboot_min_interval_seconds", 30))
+    rate_cooldown = int(cfg.get("rate_limit_cooldown_seconds", 1800))
     cooldown = int(cfg.get("reboot_cooldown_seconds", 900))
     off_seconds = int(cfg.get("power_off_seconds", 15))
     gate_ips = cfg.get("gate_ips") or []
@@ -316,16 +346,29 @@ def _tick():
 
     gates = _gate_ok(gate_ips)
 
+    # ── 1a passada: avalia todas as cameras ──────────────────────────────────
+    entries = []
     for cam in cfg.get("cameras", []):
         name = cam.get("name")
         if not name:
             continue
-
         st = _get_status(name)
         path_state = probe_path(_rtsp_url_for(name))
         rec_ok = recording_recent(name, stall)
         st["online"] = path_state == "online"
         st["recording"] = rec_ok
+        entries.append((cam, st, path_state, rec_ok))
+
+    # Se TODAS estao com stream no ar mas nenhuma gravando, o problema e'
+    # global (recorder/backend) e reiniciar cameras nao resolve.
+    if entries and all(ps == "online" and not rec for (_c, _s, ps, rec) in entries):
+        for _cam, st, _ps, _rec in entries:
+            st["last_message"] = "gravacao parada em todas; possivel problema global"
+        return
+
+    # ── 2a passada: decide e age ─────────────────────────────────────────────
+    for cam, st, path_state, rec_ok in entries:
+        name = cam.get("name")
 
         if path_state == "unknown":
             st["last_message"] = "indeterminado (mediamtx/rede?)"
@@ -350,8 +393,15 @@ def _tick():
             continue
 
         cam_ip, cam_user, cam_pw, cloud = camera_creds(name, cfg, cam)
-        can_camera = bool(cam_ip and cam_user and cam_pw)
         plug = cam.get("plug_ip")
+        reachable = host_up(cam_ip) if cam_ip else False
+        can_camera = bool(cam_ip and cam_user and cam_pw and reachable)
+
+        if st.get("rate_limited_until", 0) > now:
+            st["last_message"] = (
+                f"{reason}; Tapo bloqueado por {int(st['rate_limited_until'] - now)}s"
+            )
+            continue
 
         # ── Etapa 1: reboot da camera ─────────────────────────────────────────
         if st["stage"] is None:
@@ -360,32 +410,45 @@ def _tick():
                     f"{reason}; cooldown {int(cooldown - (now - st['last_reboot']))}s"
                 )
                 continue
-            if can_camera:
-                try:
-                    log.info("Reiniciando camera %s (%s) [%s]", name, cam_ip, reason)
-                    reboot_camera(cam_ip, cam_user, cam_pw, cloud)
-                    st["stage"] = "camera"
-                    st["stage_since"] = now
-                    st["last_reboot"] = now
-                    st["last_message"] = "camera reiniciada"
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("Falha ao reiniciar camera %s: %s", name, exc)
-                    st["last_reboot"] = now
-                    st["last_message"] = f"falha ao reiniciar camera: {exc}"
+
+            if not can_camera:
+                # Camera inacessivel/sem credenciais: reiniciar por ela e'
+                # impossivel -> vai direto para a tomada.
+                if _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
+                    continue
+                if cam_ip and not reachable:
+                    st["last_message"] = f"{reason}; camera inacessivel e sem tomada"
+                else:
+                    st["last_message"] = f"{reason}; sem meio de recuperacao"
+                st["stage"] = None
+                st["last_reboot"] = now
                 continue
-            if plug and tapo.get("username"):
-                try:
-                    log.info("Reiniciando tomada de %s (%s)", name, plug)
-                    reboot_plug(plug, tapo["username"], tapo.get("password", ""), off_seconds)
-                    st["stage"] = "plug"
-                    st["stage_since"] = now
-                    st["last_reboot"] = now
-                    st["last_message"] = "tomada reiniciada"
-                except Exception as exc:  # noqa: BLE001
-                    st["last_message"] = f"falha ao reiniciar tomada: {exc}"
-                    log.warning("Falha ao reiniciar tomada de %s: %s", name, exc)
+
+            # Evita rajada de logins no Tapo (rate-limit): um por vez.
+            if (now - _last_camera_reboot_ts) < cam_min_interval:
+                st["last_message"] = f"{reason}; aguardando vez p/ reiniciar camera"
                 continue
-            st["last_message"] = f"{reason}; sem meio de recuperacao"
+
+            try:
+                log.info("Reiniciando camera %s (%s) [%s]", name, cam_ip, reason)
+                reboot_camera(cam_ip, cam_user, cam_pw, cloud)
+                _last_camera_reboot_ts = now
+                st["stage"] = "camera"
+                st["stage_since"] = now
+                st["last_reboot"] = now
+                st["last_message"] = "camera reiniciada"
+            except Exception as exc:  # noqa: BLE001
+                _last_camera_reboot_ts = now
+                msg = str(exc)
+                log.warning("Falha ao reiniciar camera %s: %s", name, msg)
+                if "suspension" in msg.lower():
+                    st["rate_limited_until"] = now + rate_cooldown
+                # Falhou o reboot da camera -> tenta a tomada imediatamente.
+                if _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
+                    continue
+                st["stage"] = None
+                st["last_reboot"] = now
+                st["last_message"] = f"falha ao reiniciar camera: {msg}"
             continue
 
         # ── Etapa 2: camera reiniciou mas nao voltou -> tomada ────────────────
@@ -393,19 +456,7 @@ def _tick():
             if (now - st["stage_since"]) < cam_wait:
                 st["last_message"] = f"{reason}; aguardando camera voltar (reboot)"
                 continue
-            if plug and tapo.get("username"):
-                try:
-                    log.info("Camera %s nao voltou; reiniciando tomada %s", name, plug)
-                    reboot_plug(plug, tapo["username"], tapo.get("password", ""), off_seconds)
-                    st["stage"] = "plug"
-                    st["stage_since"] = now
-                    st["last_reboot"] = now
-                    st["last_message"] = "tomada reiniciada"
-                except Exception as exc:  # noqa: BLE001
-                    st["last_message"] = f"falha ao reiniciar tomada: {exc}"
-                    log.warning("Falha ao reiniciar tomada de %s: %s", name, exc)
-                    st["stage"] = None
-            else:
+            if not _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
                 st["last_message"] = f"{reason}; camera reiniciada mas sem tomada"
                 st["stage"] = None
                 st["last_reboot"] = now
