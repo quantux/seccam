@@ -8,14 +8,6 @@ VIDEOS_FOLDER = os.getenv("VIDEOS_FOLDER", "/videos")
 if not os.path.exists(VIDEOS_FOLDER) and os.path.exists("videos"):
     VIDEOS_FOLDER = os.path.abspath("videos")
 
-# Em producao /videos fica no HD externo e /configs no disco raiz. Se o HD nao
-# estiver montado no boot, o bind de /videos cai no disco raiz. Com esta flag,
-# o app se recusa a iniciar quando os dois estao no mesmo filesystem, evitando
-# gravar silenciosamente no lugar errado.
-VIDEOS_MUST_DIFFER_FROM_CONFIGS = os.getenv(
-    "VIDEOS_MUST_DIFFER_FROM_CONFIGS", ""
-).strip().lower() in ("1", "true", "yes", "on")
-
 CAMERAS_JSON = os.path.join(CONFIG_FOLDER, "cameras.json")
 
 # --- Multicam viewer (HLS/WebRTC servidos pelo mediamtx) ---
