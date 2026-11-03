@@ -67,9 +67,18 @@ Recursos:
 
 - **Baixa latência via WebRTC (WHEP)**, com fallback automático para HLS se o
   navegador não suportar WebRTC.
-- Grade que preenche 100% da tela, adaptando o número de linhas/colunas conforme
-  as câmeras escolhidas (ex.: 1 = tela cheia; 2 = lado a lado; 3 = duas em cima,
-  uma embaixo ocupando a largura toda).
+- Grade que preenche 100% da tela, com layout fluido que se adapta ao espaço e
+  à orientação: em paisagem as câmeras ficam lado a lado e, quando a tela é
+  mais alta que larga (tablet em pé), elas são empilhadas. A troca para
+  empilhado tem uma folga (só usa lado a lado com largura ≥ 1,2× a altura),
+  então janelas quase quadradas já empilham. O número de linhas/colunas é
+  escolhido para preservar o máximo da imagem de cada câmera; sobras viram uma
+  última linha mais larga (ex.: 5 câmeras = 2×2 + 1 ocupando toda a largura).
+  Vale também para redimensionamento de janela e rotação do dispositivo.
+- **Controles auto-ocultáveis**: botões de som, tela cheia e menu somem após
+  ~3s sem atividade do mouse/toque e reaparecem ao mover ou tocar na tela.
+- Vídeos aparecem inteiros (`object-fit: contain`), com barras pretas quando a
+  célula não é 16:9.
 - Botão **☰** para escolher quais câmeras aparecem (a seleção fica salva no
   navegador).
 - **Arrastar e soltar** um vídeo sobre o outro para reordenar as posições.

@@ -23,6 +23,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Cache do frontend:
+# - HTML sempre revalida (pega os novos ?v=... apos cada deploy);
+# - CSS/JS versionados podem ficar em cache "imutavel" pelo navegador.
+@app.middleware("http")
+async def frontend_cache_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/"):
+        return response
+    if path.endswith(".html") or path in ("/", ""):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    elif path.endswith((".css", ".js")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
 class CameraSchema(BaseModel):
     name: str
     rtsp_url: str

@@ -45,29 +45,60 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Layout: quantas câmeras por linha para preencher a tela ───────────────
+  // A grade e montada por linhas flex. Cada linha ocupa a largura toda e divide
+  // o espaco igualmente entre suas cameras; uma linha com 1 camera, portanto,
+  // faz essa camera ocupar 100% da largura (ex.: 5 cameras => 2x2 + 1 embaixo).
+  const VIDEO_ASPECT = 16 / 9;
+  // Com 2 cameras, so usa lado a lado quando a tela e claramente mais larga
+  // que alta. Isso da uma folga extra antes de trocar para o modo empilhado
+  // (ex.: janela ~960x950 do Brave ja fica empilhada).
+  const SIDE_BY_SIDE_MIN_ASPECT = 1.2;
+
+  // Para uma dada quantidade de colunas, monta linhas cheias e deixa o
+  // excedente na ultima linha (que fica mais larga).
+  function buildRows(n, cols) {
+    const rowCount = Math.ceil(n / cols);
+    const rows = new Array(rowCount).fill(cols);
+    rows[rowCount - 1] = n - cols * (rowCount - 1);
+    return rows;
+  }
+
+  // Área realmente ocupada pelos vídeos (object-fit: contain) em uma grade
+  // com linhas de altura igual. Usamos isso para escolher o layout que mostra
+  // mais imagem, em vez de apenas comparar a proporção das células.
+  function layoutVideoArea(rows, W, H) {
+    const rowH = H / rows.length;
+    let area = 0;
+    for (const count of rows) {
+      const tileW = W / count;
+      const videoW = Math.min(tileW, rowH * VIDEO_ASPECT);
+      area += count * videoW * (videoW / VIDEO_ASPECT);
+    }
+    return area;
+  }
+
   function computeRows(n, W, H) {
     if (n <= 0) return [];
     if (n === 1) return [1];
-    // Com 2 cameras, sempre lado a lado (uma linha, duas colunas),
-    // independente da orientacao/tela cheia.
-    if (n === 2) return [2];
-    const target = 16 / 9;
+
+    const aspect = W / Math.max(H, 1);
+
+    // 2 cameras: empilha a menos que a tela seja bem mais larga que alta.
+    if (n === 2) return aspect >= SIDE_BY_SIDE_MIN_ASPECT ? [2] : [1, 1];
+
+    // 3+ cameras: testa todas as quantidades de colunas e fica com a que
+    // maximiza a area visivel dos videos. Mantemos as linhas equilibradas
+    // (diferenca de no maximo 1 camera), para que o excedente vire uma linha
+    // final isolada e larga, em vez de uma camera minuscula ao lado de uma
+    // linha cheia (ex.: 5 => [2,2,1], e nao [4,1]).
     let best = null;
-    for (let c = 1; c <= n; c++) {
-      const r = Math.ceil(n / c);
-      const aspect = (W / c) / (H / r);
-      const score = Math.abs(Math.log(aspect / target)) + (c * r - n) * 0.2 - 0.001 * c;
-      if (!best || score < best.score) best = { r, score };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = buildRows(n, cols);
+      if (Math.max(...rows) - Math.min(...rows) > 1) continue;
+      const area = layoutVideoArea(rows, W, H);
+      if (!best || area > best.area) best = { rows, area };
     }
-    // Distribui as câmeras o mais uniforme possivel entre as linhas.
-    const rows = [];
-    let remaining = n;
-    for (let i = 0; i < best.r; i++) {
-      const count = Math.ceil(remaining / (best.r - i));
-      rows.push(count);
-      remaining -= count;
-    }
-    return rows;
+    return best ? best.rows : [n];
   }
 
   // Só não remontamos a grade quando um TILE está em tela cheia (mover o
@@ -102,7 +133,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (selected.length === 0) return;
 
-    const rows = computeRows(selected.length, window.innerWidth, window.innerHeight);
+    const rows = computeRows(
+      selected.length,
+      window.visualViewport ? window.visualViewport.width : window.innerWidth,
+      window.visualViewport ? window.visualViewport.height : window.innerHeight
+    );
     let idx = 0;
     for (const count of rows) {
       const row = document.createElement('div');
@@ -584,13 +619,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   fsAllBtn.addEventListener('click', () => toggleFullscreen(document.documentElement));
 
-  // ── Resize ────────────────────────────────────────────────────────────────
+  // ── Resize / mudança de orientação ────────────────────────────────────────
   let resizeTimer = null;
-  window.addEventListener('resize', () => {
-    if (!canRenderNow()) return;
+  function scheduleRelayout() {
+    if (!canRenderNow()) { pendingRender = true; return; }
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(renderGrid, 150);
+  }
+  window.addEventListener('resize', scheduleRelayout);
+  window.addEventListener('orientationchange', scheduleRelayout);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleRelayout);
+  }
+
+  // ── Controles: auto-ocultar por inatividade ───────────────────────────────
+  const CONTROLS_IDLE_MS = 3000;
+  let controlsTimer = null;
+  function showControls() {
+    document.body.classList.remove('controls-hidden');
+    clearTimeout(controlsTimer);
+    controlsTimer = setTimeout(() => {
+      document.body.classList.add('controls-hidden');
+    }, CONTROLS_IDLE_MS);
+  }
+  ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((evt) => {
+    window.addEventListener(evt, showControls, { passive: true });
   });
+  showControls();
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {

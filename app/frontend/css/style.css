@@ -584,6 +584,7 @@ body.multicam-body { overflow: hidden; background: #000; }
 .mc-video {
   width: 100%;
   height: 100%;
+  /* Mostra o video inteiro; sobra fundo preto quando o tile nao e 16:9. */
   object-fit: contain;
   background: #000;
   display: block;
@@ -617,22 +618,15 @@ body.multicam-body { overflow: hidden; background: #000; }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0;
-  transition: var(--transition);
+  opacity: 1;
+  transition: opacity 0.25s ease, background 0.2s ease;
 }
-.mc-tile:hover .mc-btn { opacity: 1; }
 .mc-btn:hover { background: var(--accent-color); }
 
 /* Botão de som fica à esquerda do de tela cheia */
 .mc-audio-btn { right: 50px; }
 
-/* Em telas de toque o botão de tela cheia fica sempre visível */
-@media (hover: none) {
-  .mc-btn { opacity: 1; }
-}
-
 .mc-tile:fullscreen { width: 100vw; height: 100vh; }
-.mc-tile:fullscreen .mc-btn { opacity: 1; }
 
 /* Controles flutuantes */
 .mc-float {
@@ -642,6 +636,7 @@ body.multicam-body { overflow: hidden; background: #000; }
   display: flex;
   gap: 8px;
   z-index: 50;
+  transition: opacity 0.25s ease;
 }
 .mc-fab {
   width: 40px;
@@ -659,6 +654,14 @@ body.multicam-body { overflow: hidden; background: #000; }
   transition: var(--transition);
 }
 .mc-fab:hover { background: var(--accent-color); border-color: transparent; }
+
+/* Depois de um tempo sem atividade, some com os controles (e o mouse nao
+   clica em botoes invisiveis). Qualquer movimento/toque reexibe. */
+body.multicam-body.controls-hidden .mc-btn,
+body.multicam-body.controls-hidden .mc-float {
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* Painel de seleção de câmeras */
 .mc-panel {
