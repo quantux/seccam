@@ -26,10 +26,6 @@ def start_recording(camera_name, rtsp_url):
             # entrega suave, então o sync A/V se mantém estável.
             "-use_wallclock_as_timestamps", "1",
             "-rtsp_transport", "tcp",
-            "-stimeout", "15000000",
-            "-reconnect", "1",
-            "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "5",
             "-i", rtsp_url,
             "-c:v", "copy",
             "-c:a", "aac",
