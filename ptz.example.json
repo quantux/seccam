@@ -1,0 +1,15 @@
+{
+  "cameras": [
+    {
+      "name": "camera_3",
+      "label": "Entrada 1",
+      "enabled": true,
+      "step_degrees": 5,
+      "max_step_degrees": 15,
+      "invert_x": false,
+      "invert_y": false,
+      "auth": "auto",
+      "transport": "auto"
+    }
+  ]
+}

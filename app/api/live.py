@@ -20,6 +20,7 @@ from config import (
     MEDIAMTX_WEBRTC_PORT,
     MEDIAMTX_WEBRTC_SCHEME,
 )
+from ptz import load_settings as load_ptz_settings
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 
@@ -63,16 +64,24 @@ def _webrtc_url(host, path):
 @router.get("")
 def list_live():
     """Lista as cameras com as URLs HLS e WebRTC (WHEP) do mediamtx."""
+    ptz_cams = {
+        c["name"]: c
+        for c in load_ptz_settings().get("cameras", [])
+        if c.get("enabled", True)
+    }
     cameras = []
     for cam in load_cameras():
         name = cam.get("name")
         host, path = _parse_rtsp(cam.get("rtsp_url"))
+        ptz_cfg = ptz_cams.get(name)
         cameras.append(
             {
                 "name": name,
                 "path": path,
                 "hls_url": _hls_url(host, path),
                 "webrtc_url": _webrtc_url(host, path),
+                "ptz": ptz_cfg is not None,
+                "ptz_label": (ptz_cfg or {}).get("label") or name,
             }
         )
     return {"cameras": cameras}

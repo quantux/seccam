@@ -8,6 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const pickNoneBtn = document.getElementById('pickNoneBtn');
   const closePickBtn = document.getElementById('closePickBtn');
   const fsAllBtn = document.getElementById('fsAllBtn');
+  const ptzPanel = document.getElementById('ptzPanel');
+  const ptzTitle = document.getElementById('ptzTitle');
+  const ptzStatusEl = document.getElementById('ptzStatus');
+  const ptzPresetsEl = document.getElementById('ptzPresets');
+  const ptzCloseBtn = document.getElementById('ptzCloseBtn');
+  const ptzRefreshBtn = document.getElementById('ptzRefreshBtn');
 
   const STORAGE_KEY = 'seccam_multicam_selected';
   const HLS_CONFIG = {
@@ -30,6 +36,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const players = new Map(); // name -> { video, hls, retry, retryTimer }
   let dragName = null;
   let pendingRender = false; // mudou a selecao durante fullscreen de um tile
+  let ptzCamera = null;      // camera com o painel PTZ aberto
+  let ptzPresetList = [];
+  let ptzMoveTimer = null;
+  let ptzMoveBusy = false;
+  let ptzPresetBusy = false;
+  let ptzLoadSeq = 0;
 
   // ── Seleção persistida ────────────────────────────────────────────────────
   function loadSelection() {
@@ -117,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pendingRender = false;
     const valid = new Set(allCams.map((c) => c.name));
     selected = selected.filter((n) => valid.has(n));
+    if (ptzCamera && !selected.includes(ptzCamera)) closePtz();
 
     emptyMsg.classList.toggle('hidden', selected.length > 0);
     grid.innerHTML = '';
@@ -189,7 +202,18 @@ document.addEventListener('DOMContentLoaded', () => {
     fsBtn.textContent = '⛶';
     fsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(tile); });
 
+    let ptzBtn = null;
+    if (cam.ptz) {
+      ptzBtn = document.createElement('button');
+      ptzBtn.className = 'mc-btn mc-ptz-open';
+      ptzBtn.title = 'Pan/tilt' + (cam.ptz_label ? ' — ' + cam.ptz_label : '');
+      ptzBtn.textContent = '🕹';
+      ptzBtn.addEventListener('click', (e) => { e.stopPropagation(); openPtz(cam); });
+      ptzBtn.addEventListener('dblclick', (e) => e.stopPropagation());
+    }
+
     tile.append(video, status, audioBtn, fsBtn);
+    if (ptzBtn) tile.append(ptzBtn);
 
     const player = { video, hls: null, pc: null, whepLocation: null, usingWebrtc: false, retry: 0, retryTimer: null };
     players.set(cam.name, player);
@@ -200,7 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
     video.addEventListener('error', () => { if (!player.hls && !player.pc) scheduleRetry(cam.name, 'erro'); });
 
     // Duplo toque/clique: se ampliado, volta ao normal; senão, tela cheia.
-    tile.addEventListener('dblclick', () => {
+    tile.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.mc-btn')) return;
       if (zoom.isZoomed()) zoom.reset();
       else toggleFullscreen(tile);
     });
@@ -378,6 +403,165 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateAudioBtn(tiles.get(name), v.muted);
   }
+
+  // ── PTZ (pan/tilt) ────────────────────────────────────────────────────────
+  function apiError(data, res) {
+    if (data && typeof data.detail === 'string') return data.detail;
+    if (data && Array.isArray(data.detail)) {
+      return data.detail.map((d) => d.msg || JSON.stringify(d)).join('; ');
+    }
+    return 'HTTP ' + res.status;
+  }
+
+  function setPtzStatus(text, isError) {
+    if (!ptzStatusEl) return;
+    ptzStatusEl.textContent = text || '';
+    ptzStatusEl.classList.toggle('is-error', !!isError);
+  }
+
+  function openPtz(cam) {
+    if (ptzCamera === cam.name && !ptzPanel.classList.contains('hidden')) {
+      closePtz();
+      return;
+    }
+    ptzCamera = cam.name;
+    ptzTitle.textContent = cam.ptz_label || cam.name;
+    ptzPanel.classList.remove('hidden');
+    pickPanel.classList.add('hidden');
+    ptzPresetList = [];
+    ptzPresetsEl.innerHTML = '';
+    setPtzStatus('Carregando presets...');
+    loadPtzPresets(true);
+  }
+
+  function closePtz() {
+    stopPtzMove();
+    ptzCamera = null;
+    ptzLoadSeq += 1; // ignora respostas pendentes
+    ptzPanel.classList.add('hidden');
+    ptzPresetsEl.innerHTML = '';
+    setPtzStatus('');
+  }
+
+  function renderPtzPresets() {
+    ptzPresetsEl.innerHTML = '';
+    if (!ptzPresetList.length) return;
+    ptzPresetList.forEach((preset) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mc-mini mc-ptz-preset';
+      btn.textContent = preset.name || ('Preset ' + preset.id);
+      btn.title = 'Ir para o preset ' + (preset.name || preset.id);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendPtzPreset(preset.id);
+      });
+      ptzPresetsEl.appendChild(btn);
+    });
+  }
+
+  async function loadPtzPresets(refresh) {
+    if (!ptzCamera) return;
+    const name = ptzCamera;
+    const seq = ++ptzLoadSeq;
+    try {
+      const res = await fetch(
+        `/api/ptz/${encodeURIComponent(name)}/presets?refresh=${refresh ? 1 : 0}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (seq !== ptzLoadSeq || ptzCamera !== name) return;
+      if (!res.ok) throw new Error(apiError(data, res));
+      ptzPresetList = data.presets || [];
+      renderPtzPresets();
+      if (!ptzPresetList.length) {
+        setPtzStatus('Sem presets cadastrados no app Tapo.');
+      } else {
+        setPtzStatus('');
+      }
+    } catch (err) {
+      if (seq !== ptzLoadSeq || ptzCamera !== name) return;
+      ptzPresetList = [];
+      renderPtzPresets();
+      setPtzStatus(err.message || 'Falha ao carregar presets.', true);
+    }
+  }
+
+  async function sendPtzMove(direction) {
+    if (!ptzCamera || ptzMoveBusy) return;
+    const name = ptzCamera;
+    ptzMoveBusy = true;
+    try {
+      const res = await fetch(`/api/ptz/${encodeURIComponent(name)}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(apiError(data, res));
+        err.status = res.status;
+        throw err;
+      }
+      setPtzStatus('Movendo...');
+    } catch (err) {
+      setPtzStatus(err.message || 'Falha ao mover.', true);
+      // Rate-limit ou comando invalido: para o repeat ate o usuario tentar de novo.
+      if (err.status === 429 || err.status === 400 || err.status === 409) stopPtzMove();
+    } finally {
+      ptzMoveBusy = false;
+    }
+  }
+
+  function startPtzMove(direction) {
+    stopPtzMove();
+    sendPtzMove(direction);
+    ptzMoveTimer = setInterval(() => sendPtzMove(direction), 450);
+  }
+
+  function stopPtzMove() {
+    if (ptzMoveTimer) {
+      clearInterval(ptzMoveTimer);
+      ptzMoveTimer = null;
+    }
+  }
+
+  async function sendPtzPreset(presetId) {
+    if (!ptzCamera || ptzPresetBusy) return;
+    const name = ptzCamera;
+    ptzPresetBusy = true;
+    setPtzStatus('Movendo para o preset...');
+    try {
+      const res = await fetch(`/api/ptz/${encodeURIComponent(name)}/preset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: String(presetId) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiError(data, res));
+      setPtzStatus('Pronto.');
+    } catch (err) {
+      setPtzStatus(err.message || 'Falha ao ir para o preset.', true);
+    } finally {
+      ptzPresetBusy = false;
+    }
+  }
+
+  // D-pad: um comando imediato e repete enquanto o botao estiver pressionado.
+  document.querySelectorAll('.mc-ptz-btn[data-dir]').forEach((btn) => {
+    const direction = btn.dataset.dir;
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      startPtzMove(direction);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((evt) => {
+      btn.addEventListener(evt, (e) => { e.stopPropagation(); stopPtzMove(); });
+    });
+  });
+  ptzCloseBtn.addEventListener('click', closePtz);
+  ptzRefreshBtn.addEventListener('click', () => loadPtzPresets(true));
+  ptzPanel.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // ── Reordenar com drag ────────────────────────────────────────────────────
   function clearDropMarks() {
@@ -606,7 +790,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   pickBtn.addEventListener('click', () => pickPanel.classList.toggle('hidden'));
   closePickBtn.addEventListener('click', () => pickPanel.classList.add('hidden'));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') pickPanel.classList.add('hidden'); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      pickPanel.classList.add('hidden');
+      closePtz();
+    }
+  });
 
   pickAllBtn.addEventListener('click', () => {
     selected = allCams.map((c) => c.name);

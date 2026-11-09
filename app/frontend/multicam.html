@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Multicam — Security Cameras</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
-  <link rel="stylesheet" href="./css/style.css?v=multicam-v15">
+  <link rel="stylesheet" href="./css/style.css?v=multicam-v16">
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 </head>
 <body class="multicam-body">
@@ -35,6 +35,26 @@
     <div id="pickList" class="mc-pick-list"></div>
   </div>
 
-  <script src="./js/multicam.js?v=multicam-v15"></script>
+  <!-- Painel de controle PTZ (pan/tilt) -->
+  <div id="ptzPanel" class="mc-panel mc-ptz-panel hidden">
+    <div class="mc-panel-head">
+      <strong id="ptzTitle">PTZ</strong>
+      <div class="mc-panel-actions">
+        <button id="ptzRefreshBtn" class="mc-mini" title="Recarregar presets">↻</button>
+        <button id="ptzCloseBtn" class="mc-x" title="Fechar">✕</button>
+      </div>
+    </div>
+    <div id="ptzStatus" class="mc-ptz-status"></div>
+    <div id="ptzPresets" class="mc-ptz-presets"></div>
+    <div class="mc-ptz-dpad">
+      <button type="button" class="mc-ptz-btn" data-dir="up" title="Inclinar para cima">▲</button>
+      <button type="button" class="mc-ptz-btn" data-dir="left" title="Girar para a esquerda">◀</button>
+      <button type="button" class="mc-ptz-btn" data-dir="right" title="Girar para a direita">▶</button>
+      <button type="button" class="mc-ptz-btn" data-dir="down" title="Inclinar para baixo">▼</button>
+    </div>
+    <div class="mc-ptz-hint">Segure para mover</div>
+  </div>
+
+  <script src="./js/multicam.js?v=multicam-v16"></script>
 </body>
 </html>

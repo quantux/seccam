@@ -93,6 +93,53 @@ Recursos:
 > ao cliente (a mesma máquina do mediamtx, geralmente). O mediamtx já responde
 > com os cabeçalhos CORS necessários.
 
+### Controles PTZ (pan/tilt)
+
+Algumas câmeras Tapo permitem pan/tilt (ex.: C200/C500). O multicam mostra um
+botão 🕹 nos tiles das câmeras habilitadas; ele abre um painel com os presets
+do app Tapo e um D-pad (segure para mover em passos).
+
+A lista de câmeras com PTZ fica em `configs/ptz.json` (veja
+`ptz.example.json`). IP e credenciais são lidos do `watchdog.json`; nenhuma
+senha vai para o navegador.
+
+```json
+{
+  "cameras": [
+    {
+      "name": "camera_3",
+      "label": "Entrada 1",
+      "enabled": true,
+      "step_degrees": 5,
+      "max_step_degrees": 15,
+      "invert_x": false,
+      "invert_y": false,
+      "auth": "auto",
+      "transport": "auto"
+    }
+  ]
+}
+```
+
+| Campo | Padrão | Descrição |
+|-------|--------|-----------|
+| `name` | — | Nome da câmera no `cameras.json`/watchdog |
+| `label` | = `name` | Nome exibido no painel |
+| `enabled` | `true` | Liga/desliga o PTZ dessa câmera |
+| `step_degrees` | `5` | Passo de cada comando do D-pad |
+| `max_step_degrees` | `15` | Limite para o parâmetro `amount` da API |
+| `invert_x` / `invert_y` | `false` | Inverte o sentido se a câmera andar ao contrário |
+| `auth` | `auto` | `auto`, `local` (Camera Account) ou `cloud` (admin + senha TP-Link) |
+| `transport` | `auto` | `auto`, `pytapo`, `tpap` ou `klap` (força o protocolo de login) |
+
+API: `GET /api/ptz` (lista), `GET /api/ptz/<cam>/presets?refresh=1`,
+`POST /api/ptz/<cam>/move` com `{"direction":"left","amount":5}` e
+`POST /api/ptz/<cam>/preset` com `{"id":"1"}`.
+
+> O pytapo é bloqueante e o Tapo tem rate-limit: as sessões são reaproveitadas,
+> os comandos são serializados por câmera e um `Temporary Suspension` entra em
+> cooldown de 30 min. Não faça rajadas de login/comandos.
+
 ### Configuração
 
 O host de cada stream vem da própria `rtsp_url`. Para sobrescrever ou ajustar as
