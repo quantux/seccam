@@ -132,6 +132,11 @@ senha vai para o navegador.
 | `auth` | `auto` | `auto`, `local` (Camera Account) ou `cloud` (admin + senha TP-Link) |
 | `transport` | `auto` | `auto`, `pytapo`, `tpap` ou `klap` (força o protocolo de login) |
 
+> Em firmwares novos com **Third-Party Compatibility**, o controle costuma
+> exigir `auth: cloud` (`admin` + senha da conta TP-Link); a conta local
+> continua valendo para o RTSP. Se a conta local falhar, tente `cloud` antes
+> de partir para `transport`/downgrade.
+
 API: `GET /api/ptz` (lista), `GET /api/ptz/<cam>/presets?refresh=1`,
 `POST /api/ptz/<cam>/move` com `{"direction":"left","amount":5}` e
 `POST /api/ptz/<cam>/preset` com `{"id":"1"}`.
