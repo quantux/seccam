@@ -588,6 +588,9 @@ body.multicam-body { overflow: hidden; background: #000; }
   object-fit: contain;
   background: #000;
   display: block;
+  /* Os gestos/controles sao tratados pelo tile; o video nao deve capturar
+     cliques (senao o botao PTZ/som/tela cheia fica embaixo dele). */
+  pointer-events: none;
   transform-origin: center center;
   will-change: transform;
 }
@@ -596,6 +599,7 @@ body.multicam-body { overflow: hidden; background: #000; }
   position: absolute;
   right: 8px;
   top: 6px;
+  z-index: 5;
   font-size: 0.72rem;
   color: var(--text-muted);
   text-shadow: 0 1px 4px #000;
@@ -607,6 +611,7 @@ body.multicam-body { overflow: hidden; background: #000; }
   position: absolute;
   right: 8px;
   bottom: 8px;
+  z-index: 6;
   width: 34px;
   height: 34px;
   border: none;

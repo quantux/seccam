@@ -38,7 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let pendingRender = false; // mudou a selecao durante fullscreen de um tile
   let ptzCamera = null;      // camera com o painel PTZ aberto
   let ptzPresetList = [];
+  let ptzRenderedSignature = '';
+  let ptzSyncedAt = 0;
   let ptzMoveTimer = null;
+  let ptzPresetTimer = null;
   let ptzMoveBusy = false;
   let ptzPresetBusy = false;
   let ptzLoadSeq = 0;
@@ -419,6 +422,35 @@ document.addEventListener('DOMContentLoaded', () => {
     ptzStatusEl.classList.toggle('is-error', !!isError);
   }
 
+  const PTZ_SYNC_MS = 30000;
+
+  function formatPtzTime(ts) {
+    return new Date(ts).toLocaleTimeString('pt-BR', { hour12: false });
+  }
+
+  function updatePtzSyncStatus() {
+    if (!ptzSyncedAt) return;
+    if (!ptzPresetList.length) {
+      setPtzStatus('Sem presets cadastrados no app Tapo.');
+    } else {
+      setPtzStatus('Presets sincronizados às ' + formatPtzTime(ptzSyncedAt) + '.');
+    }
+  }
+
+  function stopPtzPresetSync() {
+    if (ptzPresetTimer) {
+      clearInterval(ptzPresetTimer);
+      ptzPresetTimer = null;
+    }
+  }
+
+  function startPtzPresetSync() {
+    stopPtzPresetSync();
+    ptzPresetTimer = setInterval(() => {
+      if (ptzCamera && !ptzPanel.classList.contains('hidden')) loadPtzPresets(true);
+    }, PTZ_SYNC_MS);
+  }
+
   function openPtz(cam) {
     if (ptzCamera === cam.name && !ptzPanel.classList.contains('hidden')) {
       closePtz();
@@ -429,17 +461,24 @@ document.addEventListener('DOMContentLoaded', () => {
     ptzPanel.classList.remove('hidden');
     pickPanel.classList.add('hidden');
     ptzPresetList = [];
+    ptzRenderedSignature = '';
+    ptzSyncedAt = 0;
     ptzPresetsEl.innerHTML = '';
     setPtzStatus('Carregando presets...');
     loadPtzPresets(true);
+    startPtzPresetSync();
   }
 
   function closePtz() {
     stopPtzMove();
+    stopPtzPresetSync();
     ptzCamera = null;
     ptzLoadSeq += 1; // ignora respostas pendentes
     ptzPanel.classList.add('hidden');
     ptzPresetsEl.innerHTML = '';
+    ptzPresetList = [];
+    ptzRenderedSignature = '';
+    ptzSyncedAt = 0;
     setPtzStatus('');
   }
 
@@ -471,17 +510,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json().catch(() => ({}));
       if (seq !== ptzLoadSeq || ptzCamera !== name) return;
       if (!res.ok) throw new Error(apiError(data, res));
-      ptzPresetList = data.presets || [];
-      renderPtzPresets();
-      if (!ptzPresetList.length) {
-        setPtzStatus('Sem presets cadastrados no app Tapo.');
-      } else {
-        setPtzStatus('');
+      const next = data.presets || [];
+      const signature = JSON.stringify(next);
+      if (signature !== ptzRenderedSignature) {
+        ptzPresetList = next;
+        ptzRenderedSignature = signature;
+        renderPtzPresets();
       }
+      ptzSyncedAt = Date.now();
+      if (!ptzMoveBusy && !ptzPresetBusy) updatePtzSyncStatus();
     } catch (err) {
       if (seq !== ptzLoadSeq || ptzCamera !== name) return;
-      ptzPresetList = [];
-      renderPtzPresets();
+      // Mantem a ultima lista boa; apenas informa o erro.
+      if (!ptzPresetList.length) renderPtzPresets();
       setPtzStatus(err.message || 'Falha ao carregar presets.', true);
     }
   }
@@ -562,6 +603,14 @@ document.addEventListener('DOMContentLoaded', () => {
   ptzCloseBtn.addEventListener('click', closePtz);
   ptzRefreshBtn.addEventListener('click', () => loadPtzPresets(true));
   ptzPanel.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Ao voltar para a aba, sincroniza os presets de novo (o app Tapo pode ter
+  // mudado algo enquanto o painel estava em segundo plano).
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ptzCamera && !ptzPanel.classList.contains('hidden')) {
+      loadPtzPresets(true);
+    }
+  });
 
   // ── Reordenar com drag ────────────────────────────────────────────────────
   function clearDropMarks() {
