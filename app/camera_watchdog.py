@@ -204,9 +204,19 @@ def camera_creds(name, cfg, cam):
     cam = cam or {}
     tapo = cfg.get("tapo") or {}
     ip = cam.get("camera_ip") or ""
-    user = cam.get("camera_username") or tapo.get("camera_username") or ""
-    password = cam.get("camera_password") or tapo.get("camera_password") or ""
     cloud = tapo.get("password") or ""
+
+    # Preferencia do dono (2026-11-15): usa a MESMA conta da tomada (TP-Link,
+    # `admin` + senha da nuvem) para reiniciar a camera. A conta local
+    # ("seccam") continua valendo para o RTSP, mas nao para o reboot nos
+    # firmwares com Third-Party Compatibility.
+    explicit_user = cam.get("camera_username") or tapo.get("camera_username") or ""
+    explicit_pw = cam.get("camera_password") or tapo.get("camera_password") or ""
+
+    if cloud:
+        return ip, "admin", cloud, cloud
+
+    user, password = explicit_user, explicit_pw
 
     if not user or not password:
         try:
@@ -217,11 +227,6 @@ def camera_creds(name, cfg, cam):
                 password = u.password
         except Exception:
             pass
-
-    if (not user or not password) and cloud:
-        account = tapo.get("username") or "admin"
-        user, password = "admin", cloud
-        log.info("camera %s: usando conta TP-Link (%s) para o reboot", name, account)
 
     return ip, user, password, cloud
 
