@@ -123,7 +123,7 @@ def test_cred_local_when_no_cloud(monkeypatch):
 
 
 def test_cred_uses_rtsp_userinfo(monkeypatch):
-    cfg = {"tapo": {"username": "x", "password": "cloud"}}
+    cfg = {"tapo": {}}
     monkeypatch.setattr(wd, "_rtsp_url_for",
                         lambda name: "rtsp://user:pw@host:8554/camera_1")
     ip, user, pw, cloud = wd.camera_creds("camera_1", cfg, {"camera_ip": "1.2.3.4"})
