@@ -97,6 +97,30 @@ def test_gates_missing_blocks_alert(monkeypatch):
     assert s2["gates_ok"] is False
 
 
+def test_cred_falls_back_to_tapo_account(monkeypatch):
+    """Sem conta local/RTSP, usa admin + senha da conta TP-Link (mesma da tomada)."""
+    cfg = {"tapo": {"username": "conta@exemplo.com", "password": "cloud"}}
+    monkeypatch.setattr(wd, "_rtsp_url_for", lambda name: None)
+    ip, user, pw, cloud = wd.camera_creds("camera_1", cfg, {"camera_ip": "1.2.3.4"})
+    assert (ip, user, pw, cloud) == ("1.2.3.4", "admin", "cloud", "cloud")
+
+
+def test_cred_prefers_local_account(monkeypatch):
+    cfg = {"tapo": {"username": "x", "password": "cloud",
+                    "camera_username": "seccam", "camera_password": "local"}}
+    monkeypatch.setattr(wd, "_rtsp_url_for", lambda name: None)
+    ip, user, pw, cloud = wd.camera_creds("camera_1", cfg, {"camera_ip": "1.2.3.4"})
+    assert user == "seccam" and pw == "local" and cloud == "cloud"
+
+
+def test_cred_uses_rtsp_userinfo(monkeypatch):
+    cfg = {"tapo": {"username": "x", "password": "cloud"}}
+    monkeypatch.setattr(wd, "_rtsp_url_for",
+                        lambda name: "rtsp://user:pw@host:8554/camera_1")
+    ip, user, pw, cloud = wd.camera_creds("camera_1", cfg, {"camera_ip": "1.2.3.4"})
+    assert user == "user" and pw == "pw"
+
+
 def test_health_api_status_codes(monkeypatch, tmp_path):
     import time
     fastapi = pytest.importorskip("fastapi")

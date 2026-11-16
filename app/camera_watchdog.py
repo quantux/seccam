@@ -193,8 +193,13 @@ def _gate_ok(gate_ips):
 def camera_creds(name, cfg, cam):
     """Retorna (ip, user, password, cloud_password) da camera.
 
-    A conta local vem da config (global ou por camera) e, se faltar, e
-    extraida do userinfo da rtsp_url do cameras.json.
+    Ordem (do mais específico ao mais genérico):
+      1. credencial da própria câmera em ``watchdog.json`` (``cameras[].camera_*``);
+      2. conta local global (``tapo.camera_username``/``camera_password``);
+      3. userinfo da ``rtsp_url`` do ``cameras.json`` (conta do RTSP);
+      4. **conta TP-Link** (``tapo.username``/``password``) com usuário ``admin`` —
+         é o mesmo login da tomada e o que funciona nos firmwares com
+         Third-Party Compatibility (SPAKE2+).
     """
     cam = cam or {}
     tapo = cfg.get("tapo") or {}
@@ -212,13 +217,22 @@ def camera_creds(name, cfg, cam):
                 password = u.password
         except Exception:
             pass
+
+    if (not user or not password) and cloud:
+        account = tapo.get("username") or "admin"
+        user, password = "admin", cloud
+        log.info("camera %s: usando conta TP-Link (%s) para o reboot", name, account)
+
     return ip, user, password, cloud
 
 
 # ── Camera (pytapo) ───────────────────────────────────────────────────────────
-def _reboot_camera_blocking(ip, user, password, cloud_password):
+def _reboot_camera_blocking(ip, user, password, cloud_password, transport=None):
     from pytapo import Tapo
 
+    kwargs = {}
+    if transport in ("pytapo", "tpap", "klap"):
+        kwargs["transportMethod"] = transport
     tapo = Tapo(
         ip,
         user,
@@ -226,6 +240,7 @@ def _reboot_camera_blocking(ip, user, password, cloud_password):
         cloudPassword=cloud_password or "",
         printDebugInformation=False,
         printWarnInformation=False,
+        **kwargs,
     )
     try:
         tapo.reboot()
@@ -236,13 +251,13 @@ def _reboot_camera_blocking(ip, user, password, cloud_password):
             pass
 
 
-def reboot_camera(ip, user, password, cloud_password, timeout=30):
+def reboot_camera(ip, user, password, cloud_password, timeout=30, transport=None):
     """Reinicia a camera Tapo. Roda em thread com timeout (pytapo e' blocking)."""
     result = {}
 
     def run():
         try:
-            _reboot_camera_blocking(ip, user, password, cloud_password)
+            _reboot_camera_blocking(ip, user, password, cloud_password, transport)
         except Exception as exc:  # noqa: BLE001
             result["error"] = exc
 
