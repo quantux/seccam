@@ -30,6 +30,12 @@ from urllib.parse import urlparse
 
 from config import CAMERAS_JSON, ENABLE_WATCHDOG, VIDEOS_FOLDER, WATCHDOG_JSON
 
+try:
+    from notify import notify as _notify
+except Exception:  # pragma: no cover - notificacoes opcionais
+    def _notify(*_a, **_k):
+        return None
+
 log = logging.getLogger("watchdog")
 
 DEFAULTS = {
@@ -299,6 +305,8 @@ def _get_status(name):
                 "last_reboot": None,
                 "rate_limited_until": 0,
                 "last_message": "",
+                "notified_sick": False,
+                "gates_down": False,
             },
         )
 
@@ -306,6 +314,58 @@ def _get_status(name):
 def get_status():
     with _lock:
         return {k: dict(v) for k, v in _status.items()}
+
+
+def health_state(cfg=None):
+    """Estado resumido para /api/health (consumido pelo Uptime Kuma).
+
+    Regra: 'doente' alertavel apenas quando o watchdog JA TENTOU a recuperacao
+    e a camera continua fora/parada. Tentativas em andamento (stage camera/plug
+    dentro da janela) e cooldown de reboot voltam como OK, para nao alarmar um
+    reinicio normal.
+    """
+    cfg = cfg or load_settings()
+    threshold = int(cfg.get("offline_threshold_seconds", 180))
+    cooldown = int(cfg.get("reboot_cooldown_seconds", 900))
+    now = time.time()
+    cams = {}
+    for cam in cfg.get("cameras", []):
+        name = cam.get("name")
+        if not name:
+            continue
+        st = _get_status(name)
+        online = st.get("online")
+        recording = st.get("recording")
+        since = st.get("unhealthy_since")
+        stage = st.get("stage")
+        last = st.get("last_reboot") or 0
+        ok = bool(online and recording)
+        sick_for = int(now - since) if since else 0
+        tried = stage == "plug" or (bool(last) and (now - last) >= cooldown)
+        alert = (not ok) and online is not None and sick_for >= threshold and tried
+        cams[name] = {
+            "ok": ok,
+            "online": online,
+            "recording": recording,
+            "sick_for_seconds": sick_for,
+            "stage": stage,
+            "tried_recovery": tried,
+            "alert": alert,
+            "message": st.get("last_message") or "",
+        }
+    gates = {}
+    try:
+        gate_ips = cfg.get("gate_ips") or []
+        gates = {ip: host_up(ip) for ip in gate_ips}
+    except Exception:
+        gates = {}
+    return {
+        "ok": all(c["ok"] for c in cams.values()) if cams else False,
+        "alert": any(c["alert"] for c in cams.values()),
+        "gates_ok": all(gates.values()) if gates else True,
+        "gates": gates,
+        "cameras": cams,
+    }
 
 
 def _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
@@ -346,6 +406,19 @@ def _tick():
 
     gates = _gate_ok(gate_ips)
 
+    # Notifica as transicoes de APs/gates (globais, nao por camera).
+    st_gate = _status.setdefault("_gates", {"down": False})
+    if not gates and not st_gate.get("down"):
+        st_gate["down"] = True
+        down = [ip for ip in gate_ips if not host_up(ip)]
+        _notify("⚠️ APs/roteadores fora do ar",
+                f"Fora: {', '.join(down) or ', '.join(gate_ips)}.\n"
+                "Watchdog aguarda e NÃO reinicia câmeras.", priority="high")
+    elif gates and st_gate.get("down"):
+        st_gate["down"] = False
+        _notify("🟢 APs/roteadores voltaram", "Recuperação das câmeras pode seguir.",
+                priority="default")
+
     # ── 1a passada: avalia todas as cameras ──────────────────────────────────
     entries = []
     for cam in cfg.get("cameras", []):
@@ -364,20 +437,31 @@ def _tick():
     if entries and all(ps == "online" and not rec for (_c, _s, ps, rec) in entries):
         for _cam, st, _ps, _rec in entries:
             st["last_message"] = "gravacao parada em todas; possivel problema global"
+        _notify("🔴 gravação parada em todas as câmeras",
+                "Possível problema global (recorder/mediatmx). Watchdog não reinicia "
+                "câmeras nesse caso.", priority="high")
         return
 
     # ── 2a passada: decide e age ─────────────────────────────────────────────
     for cam, st, path_state, rec_ok in entries:
         name = cam.get("name")
+        label = cam.get("label") or name
 
         if path_state == "unknown":
             st["last_message"] = "indeterminado (mediamtx/rede?)"
             continue
 
         if path_state == "online" and rec_ok:
+            was_sick = st.get("notified_sick")
+            out_for = int(now - st["unhealthy_since"]) if st.get("unhealthy_since") else 0
             st["unhealthy_since"] = None
             st["stage"] = None
+            st["notified_sick"] = False
             st["last_message"] = "ok"
+            if was_sick:
+                _notify(f"🟢 {label}: gravando de novo",
+                        f"Recuperada após ~{out_for // 60} min ({name}).",
+                        priority="default", key=f"ok:{name}")
             continue
 
         reason = "camera fora" if path_state != "online" else "gravacao parada"
@@ -388,6 +472,13 @@ def _tick():
         if outage < threshold:
             st["last_message"] = f"{reason} ha {int(outage)}s"
             continue
+
+        if not st.get("notified_sick"):
+            st["notified_sick"] = True
+            _notify(f"🔴 {label}: {reason}",
+                    f"{name}: {reason} há {int(outage // 60)} min.\n"
+                    f"Watchdog vai tentar recuperar.", priority="high")
+
         if not gates:
             # Roteadores/APs fora do ar: NAO reinicia camera nem tomada.
             # Apenas aguarda. Reseta o ciclo para que, quando voltarem,
@@ -420,11 +511,19 @@ def _tick():
                 # Camera inacessivel/sem credenciais: reiniciar por ela e'
                 # impossivel -> vai direto para a tomada.
                 if _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
+                    _notify(f"🔌 {label}: tomada reiniciada",
+                            f"{reason}; câmera inacessível ({cam_ip}).", priority="high")
                     continue
                 if cam_ip and not reachable:
                     st["last_message"] = f"{reason}; camera inacessivel e sem tomada"
+                    _notify(f"⚠️ {label}: sem recuperação possível",
+                            f"{reason}; câmera inacessível e sem tomada configurada.",
+                            priority="high", key=f"norec:{name}", min_interval=3600)
                 else:
                     st["last_message"] = f"{reason}; sem meio de recuperacao"
+                    _notify(f"⚠️ {label}: sem meio de recuperação",
+                            f"{reason}; sem credenciais/tomada.", priority="high",
+                            key=f"norec:{name}", min_interval=3600)
                 st["stage"] = None
                 st["last_reboot"] = now
                 continue
@@ -442,14 +541,23 @@ def _tick():
                 st["stage_since"] = now
                 st["last_reboot"] = now
                 st["last_message"] = "camera reiniciada"
+                _notify(f"🔄 {label}: reiniciando câmera",
+                        f"{reason} há {int(outage // 60)} min. Reinício enviado ({cam_ip}).",
+                        priority="high")
             except Exception as exc:  # noqa: BLE001
                 _last_camera_reboot_ts = now
                 msg = str(exc)
                 log.warning("Falha ao reiniciar camera %s: %s", name, msg)
                 if "suspension" in msg.lower():
                     st["rate_limited_until"] = now + rate_cooldown
+                    _notify(f"⏸ {label}: Tapo bloqueado (rate-limit)",
+                            f"{msg}\nCooldown de {rate_cooldown // 60} min.",
+                            priority="high", key=f"rl:{name}", min_interval=1800)
                 # Falhou o reboot da camera -> tenta a tomada imediatamente.
                 if _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
+                    _notify(f"🔌 {label}: tomada reiniciada",
+                            f"Reinício da câmera falhou ({msg[:120]}); tomada reiniciada.",
+                            priority="high")
                     continue
                 st["stage"] = None
                 st["last_reboot"] = now
@@ -463,8 +571,16 @@ def _tick():
                 continue
             if not _start_plug_reboot(st, plug, tapo, off_seconds, now, name):
                 st["last_message"] = f"{reason}; camera reiniciada mas sem tomada"
+                _notify(f"⚠️ {label}: câmera não voltou",
+                        f"{reason}; reiniciada e não voltou, e não há tomada para "
+                        "reiniciar.", priority="high", key=f"notplug:{name}",
+                        min_interval=3600)
                 st["stage"] = None
                 st["last_reboot"] = now
+            else:
+                _notify(f"🔌 {label}: tomada reiniciada",
+                        f"Câmera reiniciada não voltou em {cam_wait // 60} min; "
+                        "tomada reiniciada.", priority="high")
             continue
 
         # ── Etapa 3: tomada reiniciou; aguarda cooldown p/ novo ciclo ─────────
@@ -495,4 +611,9 @@ def start_watchdog():
     if not ENABLE_WATCHDOG:
         log.info("Watchdog desativado (ENABLE_WATCHDOG=0)")
         return
+    try:
+        from notify import start_worker
+        start_worker()
+    except Exception:  # noqa: BLE001
+        pass
     threading.Thread(target=_run, name="watchdog", daemon=True).start()
