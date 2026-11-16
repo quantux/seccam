@@ -31,9 +31,11 @@ def _mask(cfg):
 @router.get("")
 def get_watchdog():
     cfg = load_settings()
+    # `_gates` é estado interno do watchdog (controle de notificação), não é câmera.
+    status = {k: v for k, v in get_status().items() if not k.startswith("_")}
     return {
         "config": _mask(cfg),
-        "status": get_status(),
+        "status": status,
         "gates": gates_status(cfg.get("gate_ips") or []),
     }
 
