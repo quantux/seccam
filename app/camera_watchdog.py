@@ -165,18 +165,34 @@ def recording_recent(name, max_age):
     return (time.time() - newest) <= max_age
 
 
-def host_up(ip, timeout=2):
-    """Ping simples (o container tem iputils-ping)."""
+def host_up(ip, timeout=2, count=None, need=None):
+    """Ping com tolerancia a perda isolada.
+
+    Padrao: ``GATE_PING_COUNT`` pings de ``GATE_PING_TIMEOUT`` s; o host conta
+    como no ar se pelo menos ``GATE_PING_NEED`` responderem. Um unico pacote
+    perdido (comum em enlace Wi-Fi) nao derruba o gate.
+    """
     if not ip:
         return False
+    count = count or int(os.getenv("GATE_PING_COUNT", "3"))
+    need = need or int(os.getenv("GATE_PING_NEED", "2"))
+    if need > count:
+        need = count
     try:
         res = subprocess.run(
-            ["ping", "-c", "1", "-W", str(timeout), ip],
-            stdout=subprocess.DEVNULL,
+            ["ping", "-c", str(count), "-W", str(timeout), "-i", "0.3", ip],
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            timeout=timeout + 2,
+            timeout=timeout * count + 3,
+            text=True,
         )
-        return res.returncode == 0
+        # le a linha "N packets transmitted, M received, ..."
+        for line in res.stdout.splitlines():
+            if "packets transmitted" in line and "received" in line:
+                recv_field = line.split("received", 1)[0].strip().rsplit(" ", 1)[-1]
+                if recv_field.isdigit():
+                    return int(recv_field) >= need
+        return False
     except Exception:
         return False
 
