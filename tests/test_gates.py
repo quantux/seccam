@@ -15,7 +15,7 @@ class Out:
         self.returncode = rc
 
 
-def stats(recv, sent=3):
+def stats(recv, sent=4):
     pct = int((sent - recv) / sent * 100)
     return (f"\n--- 1.2.3.4 ping statistics ---\n"
             f"{sent} packets transmitted, {recv} received, "
@@ -28,13 +28,13 @@ def test_all_lost(monkeypatch):
 
 
 def test_one_lost_still_up(monkeypatch):
-    """Perder 1 de 3 nao derruba o gate (falso positivo do blip de Wi-Fi)."""
-    monkeypatch.setattr(wd.subprocess, "run", lambda *a, **k: Out(stats(2), 0))
+    """3 de 4: perder 1 nao derruba o gate (blip de Wi-Fi / RX drop do Pi)."""
+    monkeypatch.setattr(wd.subprocess, "run", lambda *a, **k: Out(stats(3), 0))
     assert wd.host_up("1.2.3.4") is True
 
 
 def test_two_lost_is_down(monkeypatch):
-    monkeypatch.setattr(wd.subprocess, "run", lambda *a, **k: Out(stats(1), 0))
+    monkeypatch.setattr(wd.subprocess, "run", lambda *a, **k: Out(stats(2), 0))
     assert wd.host_up("1.2.3.4") is False
 
 

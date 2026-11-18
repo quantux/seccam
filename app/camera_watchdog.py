@@ -169,13 +169,15 @@ def host_up(ip, timeout=2, count=None, need=None):
     """Ping com tolerancia a perda isolada.
 
     Padrao: ``GATE_PING_COUNT`` pings de ``GATE_PING_TIMEOUT`` s; o host conta
-    como no ar se pelo menos ``GATE_PING_NEED`` responderem. Um unico pacote
-    perdido (comum em enlace Wi-Fi) nao derruba o gate.
+    como no ar se pelo menos ``GATE_PING_NEED`` responderem. Um pacote perdido
+    (comum em enlace Wi-Fi, ou quando o Pi esta ocupado e descarta RX) nao
+    derruba o gate. Default: 3 de 4 pings, 3 s cada (tolera 25% de perda).
     """
     if not ip:
         return False
-    count = count or int(os.getenv("GATE_PING_COUNT", "3"))
-    need = need or int(os.getenv("GATE_PING_NEED", "2"))
+    count = count or int(os.getenv("GATE_PING_COUNT", "4"))
+    need = need or int(os.getenv("GATE_PING_NEED", "3"))
+    timeout = float(os.getenv("GATE_PING_TIMEOUT", timeout))
     if need > count:
         need = count
     try:
